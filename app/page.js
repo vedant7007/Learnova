@@ -359,12 +359,12 @@ export default function AboutPage() {
               <div className="space-y-8">
                 <SectionBadge icon={Sparkles} text="Our Mission" />
 
-                <h2 className="text-[2rem] md:text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-accent bg-clip-text text-transparent">
+                <h2 className="text-2xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-accent bg-clip-text text-transparent">
                   Empowering Educational Excellence
                 </h2>
 
                 <div className="space-y-6">
-                  <p className="text-lg text-gray-300 leading-relaxed">
+                  <p className="md:text-lg text-gray-300 leading-relaxed">
                     At Learnova, our mission is to harness the power of{" "}
                     <span className="text-accent font-semibold">
                       technology
@@ -379,7 +379,7 @@ export default function AboutPage() {
                     .
                   </p>
 
-                  <p className="text-lg text-gray-400 leading-relaxed">
+                  <p className="md:text-lg text-gray-400 leading-relaxed">
                     With Learnova, teachers can teach without distractions,
                     students can learn with purpose, and institutions can create
                     environments where every learner thrives.
