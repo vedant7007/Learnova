@@ -13,7 +13,6 @@ export async function GET(request) {
       return jsonError("Unauthorized", 401);
     }
 
-    // Fetch the authenticated user's profile
     const profile = await getUserProfile(decodedToken.uid);
 
     if (!profile) {
@@ -21,20 +20,41 @@ export async function GET(request) {
     }
 
     const db = await connectDb();
+    const collection = db.collection("exceptions");
+    const query = { status: "pending" };
 
-    let query = { status: "pending" };
+    // Fetch total document count under query
+    const total = await collection.countDocuments(query);
 
-    if (profile.role !== "admin" && profile.role !== "teacher") {
-      query.studentEmail = decodedToken.email;
+    let exceptions;
+
+    if (profile.role === "admin" || profile.role === "teacher") {
+      exceptions = await db
+        .collection("exceptions")
+        .find({ status: "pending" })
+        .sort({ createdAt: -1 })
+        .toArray();
+    } else if (profile.role === "student") {
+      exceptions = await db
+        .collection("exceptions")
+        .find({ status: "pending", studentEmail: decodedToken.email })
+        .sort({ createdAt: -1 })
+        .toArray();
+    } else {
+      return jsonError("Forbidden", 403);
     }
 
-    const exceptions = await db
-      .collection("exceptions")
-      .find(query)
-      .sort({ createdAt: -1 })
-      .toArray();
+    const totalPages = Math.ceil(total / limit);
 
-    return jsonSuccess(exceptions, 200);
+    return jsonSuccess({
+      exceptions,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+      },
+    }, 200);
   } catch (error) {
     console.error("Exception fetch error:", error);
     return jsonError("Internal server error", 500);
