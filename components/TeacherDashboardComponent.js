@@ -56,6 +56,8 @@ import ChartSkeleton from "@/components/ui/ChartSkeleton";
 import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
 import SkeletonCard from "@/components/ui/SkeletonCard";
 import AttendanceAnalytics from "@/components/dashboard/AttendanceAnalytics";
+import { db } from "@/lib/firebaseConfig";
+import { collection, getDocs, query, where } from "firebase/firestore";
 
 const AttendanceTrendsChart = dynamic(
   () => import("@/components/charts/AttendanceTrendsChart"),
@@ -74,12 +76,49 @@ const TeacherDashboard = () => {
   const [passcodeGenerated, setPasscodeGenerated] = useState(false);
   const { user } = useAuth();
   const [attendanceStats, setAttendanceStats] = useState({
-    totalStudents: 45,
-    presentToday: 38,
-    absentToday: 7,
-    lateToday: 3,
-    averageAttendance: 84.2,
+    totalStudents: 0,
+    presentToday: 0,
+    absentToday: 0,
+    lateToday: 0,
+    averageAttendance: 0,
   });
+
+  useEffect(() => {
+    const fetchTodayAttendanceStats = async () => {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const attendanceQuery = query(
+          collection(db, "attendance_records"),
+          where("date", "==", today),
+        );
+        const snapshot = await getDocs(attendanceQuery);
+        const records = snapshot.docs.map((doc) => doc.data());
+
+        const presentToday = records.filter(
+          (r) => r.status === "present" || !r.status,
+        ).length;
+        const lateToday = records.filter((r) => r.status === "late").length;
+        const absentToday = records.filter((r) => r.status === "absent").length;
+        const totalStudents = records.length;
+        const averageAttendance =
+          totalStudents > 0
+            ? Math.round(((presentToday + lateToday) / totalStudents) * 1000) / 10
+            : 0;
+
+        setAttendanceStats({
+          totalStudents,
+          presentToday,
+          absentToday,
+          lateToday,
+          averageAttendance,
+        });
+      } catch (err) {
+        console.error("Failed to fetch today's attendance stats:", err);
+      }
+    };
+
+    fetchTodayAttendanceStats();
+  }, []);
   const [todayClasses, setTodayClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [attendanceRequests, setAttendanceRequests] = useState([]);
