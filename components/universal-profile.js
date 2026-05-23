@@ -126,6 +126,13 @@ export default function UniversalProfile() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_SIZE) {
+      toast.error("File size exceeds the 5MB limit. Please select a smaller file.");
+      e.target.value = "";
+      return;
+    }
+
     const loadingToast = toast.loading("Uploading profile picture...");
 
     try {
