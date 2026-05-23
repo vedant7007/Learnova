@@ -1,6 +1,6 @@
 import { GET, rateLimitMap } from "@/app/api/labels/route";
 import { connectDb } from "@/lib/mongodb";
-import { verifyFirebaseToken } from "@/lib/firebase-admin";
+import { verifyFirebaseToken, getUserProfile } from "@/lib/firebase-admin";
 
 jest.mock("next/server", () => ({
   NextResponse: {
@@ -20,6 +20,7 @@ jest.mock("@/lib/mongodb", () => ({
 
 jest.mock("@/lib/firebase-admin", () => ({
   verifyFirebaseToken: jest.fn(),
+  getUserProfile: jest.fn(),
 }));
 
 describe("GET /api/labels - Security & Authentication Tests", () => {
@@ -35,9 +36,11 @@ describe("GET /api/labels - Security & Authentication Tests", () => {
     }
 
     verifyFirebaseToken.mockImplementation(async (token) => {
-      if (!token || token === "invalid-token") return null;
-      return { uid: "mock-uid", email: "user@domain.com" };
+      if (!token || token === "invalid-token") return { valid: false, reason: "Invalid" };
+      return { valid: true, decodedToken: { uid: "mock-uid", email: "user@domain.com" } };
     });
+
+    getUserProfile.mockResolvedValue({ role: "teacher" });
 
     mockToArray = jest.fn();
     mockLimit = jest.fn().mockReturnValue({

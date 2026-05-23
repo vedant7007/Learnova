@@ -35,7 +35,7 @@ function AuthPageContent() {
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode");
 
-  const [showRoleSelection, setShowRoleSelection] = useState(false);
+  const [showRoleSelection, setShowRoleSelection] = useState(true);
   const [isLogin, setIsLogin] = useState(mode !== "signup");
   const [selectedRole, setSelectedRole] = useState("");
 
@@ -148,18 +148,17 @@ function AuthPageContent() {
         });
       }
     } catch (err) {
-      toast.error("An unexpected error occurred. Please try again.");
-      setErrors({ submit: "An unexpected error occurred. Please try again." });
+      toast.error("Authentication failed. Please verify your credentials and try again.");
+      setErrors({ submit: "Authentication failed. Please verify your credentials and try again." });
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    console.log("🔴 Google button clicked. Selected role:", selectedRole);
-
+    
     if (!selectedRole) {
-      console.warn("⚠️ Google login attempted without role selection");
+      
       setErrors({ role: "Please select your role first" });
       return;
     }
@@ -170,7 +169,7 @@ function AuthPageContent() {
       selectedRole === USER_ROLES.INSTITUTE &&
       !instituteName.trim()
     ) {
-      console.warn("⚠️ Google signup attempted for institute without name");
+      
       setErrors({ instituteName: "Institute name is required" });
       return;
     }
@@ -179,25 +178,25 @@ function AuthPageContent() {
     setErrors({});
 
     try {
-      console.log("🟡 Calling loginWithGoogle service...");
+    
       const result = await loginWithGoogle(selectedRole, isLogin, {
         fullName,
         instituteName,
       });
-      console.log("🟢 Google auth result:", result);
+      
 
       if (result.success) {
-        console.log("✅ Google login successful, redirecting...");
+        
         toast.success("Successfully logged in with Google!");
         redirectBasedOnRole(result.userData.role, router);
       } else {
-        console.error("❌ Google login failed:", result.error);
-        toast.error(result.error || "Google authentication failed.");
-        setErrors({ submit: result.error });
+        
+        toast.error(result.error || "Google sign-in could not be completed. Please try again.");
+        setErrors({ submit: result.error || "Google sign-in could not be completed. Please try again." });
       }
     } catch (err) {
-      toast.error("An unexpected error occurred. Please try again.");
-      setErrors({ submit: "An unexpected error occurred. Please try again." });
+      toast.error("An unexpected error occurred during Google authentication. Please try again later.");
+      setErrors({ submit: "An unexpected error occurred during Google authentication. Please try again later." });
     } finally {
       setIsLoading(false);
     }
@@ -230,8 +229,13 @@ function AuthPageContent() {
         setErrors({ forgotEmail: result.error });
       }
     } catch (err) {
+      toast.error(
+        "Password reset failed. Please verify your email and try again.",
+      );
+
       setErrors({
-        forgotEmail: "Failed to send reset email. Please try again.",
+        forgotEmail:
+          "Password reset failed. Please verify your email and try again.",
       });
     } finally {
       setIsLoading(false);
@@ -285,7 +289,7 @@ function AuthPageContent() {
 
               {/* Right Side - Hero Content */}
               <div className="order-1 lg:order-2">
-                <HeroSection />
+                <HeroSection selectedRole={selectedRole} />
               </div>
             </div>
           )}

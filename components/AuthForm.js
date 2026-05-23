@@ -103,10 +103,10 @@ export default function AuthForm({
             {isLogin
               ? `Sign in to your ${
                   ROLE_CONFIG[selectedRole]?.title.toLowerCase() || "account"
-                }`
+                } account`
               : `Create your ${
                   ROLE_CONFIG[selectedRole]?.title.toLowerCase() || "account"
-                }`}
+                } account`}
           </p>
         </div>
 
@@ -128,8 +128,12 @@ export default function AuthForm({
                   placeholder="Enter your full name"
                   value={fullName}
                   onChange={(e) => {
-                    setFullName(e.target.value);
-                    clearError("fullName");
+                    const value = e.target.value;
+                    setFullName(value);
+
+                    if (errors.fullName) {
+                      validateField("fullName", value);
+                    }
                   }}
                   onBlur={(e) => validateField("fullName", e.target.value)}
                   className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-background text-foreground placeholder-muted-foreground ${
@@ -150,9 +154,13 @@ export default function AuthForm({
                     type="text"
                     placeholder="Enter your institute name"
                     value={instituteName}
-                    onChange={(e) => {
-                      setInstituteName(e.target.value);
-                      clearError("instituteName");
+                   onChange={(e) => {
+                      const value = e.target.value;
+                      setInstituteName(value);
+
+                      if (errors.instituteName) {
+                        validateField("instituteName", value);
+                      }
                     }}
                     onBlur={(e) => validateField("instituteName", e.target.value)}
                     className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-background text-foreground placeholder-muted-foreground ${
@@ -182,8 +190,12 @@ export default function AuthForm({
                 placeholder="Enter your email"
                 value={email}
                 onChange={(e) => {
-                  setEmail(e.target.value);
-                  clearError("email");
+                  const value = e.target.value;
+                  setEmail(value);
+
+                  if (errors.email) {
+                    validateField("email", value);
+                  }
                 }}
                 onBlur={(e) => validateField("email", e.target.value)}
                 className={`w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-background text-foreground placeholder-muted-foreground ${
@@ -207,8 +219,12 @@ export default function AuthForm({
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => {
-                  setPassword(e.target.value);
-                  clearError("password");
+                  const value = e.target.value;
+                  setPassword(value);
+
+                  if (errors.password) {
+                    validateField("password", value);
+                  }
                 }}
                 onBlur={(e) => validateField("password", e.target.value)}
                 className={`w-full pl-10 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-background text-foreground placeholder-muted-foreground ${
@@ -218,7 +234,7 @@ export default function AuthForm({
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover: text-muted-foreground"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-muted-foreground"
               >
                 {showPassword ? (
                   <EyeOff className="w-5 h-5" />
@@ -230,42 +246,25 @@ export default function AuthForm({
             {errors.password && (
               <p className="text-red-400 text-sm mt-1">{errors.password}</p>
             )}
-            {!isLogin && password && (
-              <div className="mt-3 space-y-2">
-                <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${passwordStrength.barClass} ${passwordStrength.widthClass} transition-all duration-500`}
-                  />
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-gray-400">Password Strength:</span>
-                  <span className={`font-semibold ${passwordStrength.textClass}`}>
-                    {passwordStrength.label}
-                  </span>
-                </div>
-              </div>
-            )}
             {!isLogin && !errors.password && (
               <p className="text-gray-400 text-xs mt-1">
                 Min 8 characters with upper, lower, number, and special character.
               </p>
             )}
-            {!isLogin && (
+            {!isLogin && password && (
               <div className="mt-3 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-400 font-medium">Password Strength</span>
+                  <span className="text-gray-400 font-medium">Password Strength:</span>
                   <span
                     data-testid="password-strength-label"
-                    className={`font-semibold transition-colors duration-300 ${
-                      password.length > 0 ? passwordStrength.textClass : "text-gray-500"
-                    }`}
+                    className={`font-semibold transition-colors duration-300 ${passwordStrength.textClass}`}
                   >
-                    {password.length > 0 ? passwordStrength.label : "None"}
+                    {passwordStrength.label}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5 h-1.5 w-full bg-gray-700/30 rounded-full overflow-hidden">
                   {[0, 1, 2, 3].map((index) => {
-                    const activeSegments = password.length > 0 ? Math.min(passwordStrength.score + 1, 4) : 0;
+                    const activeSegments = Math.min(passwordStrength.score + 1, 4);
                     const isFilled = index < activeSegments;
                     return (
                       <div

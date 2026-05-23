@@ -1,30 +1,25 @@
-import { NextResponse } from "next/server";
+// app/api/exceptions/list/route.js
+
 import { connectDb } from "@/lib/mongodb";
-import { verifyFirebaseToken, getUserProfile } from "@/lib/firebase-admin";
-import { jsonError, jsonSuccess } from "@/lib/api-response";
+import { requireRole } from "@/lib/rbac";
+import { withErrorHandler } from "@/lib/error-handler";
+import { jsonSuccess } from "@/lib/api-response";
+import { escapeRegex, sanitizeSortField } from "@/utils/mongoUtils";
 
-export async function GET(request) {
-  try {
-    const authorization = request.headers.get("authorization");
-    const token = authorization?.split(" ")[1];
-    const authResult = await verifyFirebaseToken(token);
+// Forces Next.js to treat this as a runtime API instead of trying to statically compile it during npm run build
+export const dynamic = "force-dynamic";
 
-    if (!authResult.valid) {
-      return NextResponse.json(
-        {
-          error: "Unauthorized",
-          reason: authResult.reason,
-        },
-        { status: 401 }
-      );
-    }
+const ALLOWED_SORT_FIELDS = new Set([
+  "createdAt",
+  "updatedAt",
+  "status",
+  "date",
+  "studentEmail",
+  "reason",
+]);
 
-    const decodedToken = authResult.decodedToken;
-    const profile = await getUserProfile(decodedToken.uid);
-
-    if (!profile) {
-      return jsonError("User profile not found", 404);
-    }
+export const GET = withErrorHandler(async (request) => {
+  const { payload: decodedToken, profile } = await requireRole(request, ["admin", "teacher", "student"]);
 
     const { searchParams } = new URL(request.url);
 
@@ -35,19 +30,24 @@ export async function GET(request) {
       Math.max(1, parseInt(searchParams.get("limit") || "10", 10))
     );
 
-    // Search
-    const search = searchParams.get("search") || "";
+    // Search — escape metacharacters and cap length to prevent ReDoS
+    const rawSearch = searchParams.get("search") || "";
+    const search = escapeRegex(rawSearch);
 
-    // Sorting
-    const sortBy = searchParams.get("sortBy") || "createdAt";
+    // Sorting — validate against an explicit allowlist to prevent field-name injection
+    const sortBy = sanitizeSortField(
+      searchParams.get("sortBy"),
+      ALLOWED_SORT_FIELDS,
+      "createdAt"
+    );
     const sortOrder = searchParams.get("sortOrder") === "asc" ? 1 : -1;
 
     // Validation
     if (page < 1 || limit < 1) {
-      return jsonError("Page and limit must be greater than 0", 400);
+      const { ValidationError } = require("@/lib/errors");
+      throw new ValidationError("Page and limit must be greater than 0");
     }
 
-    // FIX: Removed duplicate `const skip` declaration — only declared once here
     const skip = (page - 1) * limit;
 
     const db = await connectDb();
@@ -61,8 +61,6 @@ export async function GET(request) {
     // Role-based filtering
     if (profile.role === "student") {
       query.studentEmail = decodedToken.email;
-    } else if (profile.role !== "admin" && profile.role !== "teacher") {
-      return jsonError("Forbidden", 403);
     }
 
     // Search filter
@@ -96,7 +94,6 @@ export async function GET(request) {
 
     const totalPages = Math.ceil(total / limit);
 
-    // FIX: Moved 200 outside the object — it's the second argument to jsonSuccess, not a property
     return jsonSuccess(
       {
         exceptions,
@@ -110,7 +107,4 @@ export async function GET(request) {
       },
       200
     );
-  } catch (error) {
-    return jsonError("Internal server error", 500);
-  }
-}
+});

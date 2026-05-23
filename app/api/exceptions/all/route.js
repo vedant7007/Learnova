@@ -1,38 +1,21 @@
+import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/mongodb";
-import { verifyFirebaseToken, getUserProfile } from "@/lib/firebase-admin";
-import { jsonError, jsonSuccess } from "@/lib/api-response";
+import { requireRole } from "@/lib/rbac";
+import { withErrorHandler } from "@/lib/error-handler";
+import { jsonSuccess } from "@/lib/api-response";
+import { escapeRegex, sanitizeSortField } from "@/utils/mongoUtils";
 
-export async function GET(request) {
-  try {
-    const authorization = request.headers.get("authorization");
-    const token = authorization?.split(" ")[1];
+const ALLOWED_SORT_FIELDS = new Set([
+  "createdAt",
+  "updatedAt",
+  "status",
+  "date",
+  "studentEmail",
+  "reason",
+]);
 
-    const authResult = await verifyFirebaseToken(token);
-
-    if (!authResult.valid) {
-      return NextResponse.json(
-        {
-          error: "Unauthorized",
-          reason: authResult.reason,
-        },
-        { status: 401 }
-      );
-    }
-
-    const decodedToken = authResult.decodedToken;
-
-
-    // Fetch user profile
-    const profile = await getUserProfile(decodedToken.uid);
-
-    if (!profile) {
-      return jsonError("User profile not found", 404);
-    }
-
-    // Restrict access
-    if (profile.role !== "admin" && profile.role !== "teacher") {
-      return jsonError("Forbidden", 403);
-    }
+export const GET = withErrorHandler(async (request) => {
+  await requireRole(request, ["admin", "teacher"]);
 
     const { searchParams } = new URL(request.url);
 
@@ -46,11 +29,16 @@ export async function GET(request) {
 
     const skip = (page - 1) * limit;
 
-    // Search
-    const search = searchParams.get("search") || "";
+    // Search — escape metacharacters and cap length to prevent ReDoS
+    const rawSearch = searchParams.get("search") || "";
+    const search = escapeRegex(rawSearch);
 
-    // Sorting
-    const sortBy = searchParams.get("sortBy") || "createdAt";
+    // Sorting — validate against an explicit allowlist to prevent field-name injection
+    const sortBy = sanitizeSortField(
+      searchParams.get("sortBy"),
+      ALLOWED_SORT_FIELDS,
+      "createdAt"
+    );
 
     const sortOrder = searchParams.get("sortOrder") === "asc" ? 1 : -1;
 
@@ -109,7 +97,4 @@ export async function GET(request) {
       },
       200,
     );
-  } catch (error) {
-    return jsonError("Internal server error", 500);
-  }
-}
+});

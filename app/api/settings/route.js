@@ -1,7 +1,13 @@
+import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/mongodb";
-import { verifyFirebaseToken, getUserProfile } from "@/lib/firebase-admin";
-import { jsonError, jsonSuccess } from "@/lib/api-response";
+import { getUserProfile } from "@/lib/firebase-admin";
+import { jsonSuccess } from "@/lib/api-response";
 import { z } from "zod";
+import { withErrorHandler } from "@/lib/error-handler";
+import { requireAuth } from "@/lib/rbac";
+import { ValidationError, ForbiddenError } from "@/lib/errors";
+
+export const dynamic = "force-dynamic";
 
 const settingsSchema = z
   .object({
@@ -91,65 +97,54 @@ const settingsSchema = z
   })
   .strict();
 
-export async function PATCH(request) {
-  try {
-    const authorization = request.headers.get("authorization");
-    const token = authorization?.split(" ")[1];
+export const PATCH = withErrorHandler(async (request) => {
+  const decodedToken = await requireAuth(request);
 
-   const authResult = await verifyFirebaseToken(token);
+  const body = await request.json();
+  const parsed = settingsSchema.safeParse(body);
 
-    if (!decodedToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const parsed = settingsSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Bad Request: Unrecognized or invalid fields." },
-        { status: 400 },
-      );
-    }
-
-    const { userId: bodyUserId, ...settings } = parsed.data;
-
-    let targetUserId = decodedToken.uid;
-    let isOperatorAdmin = false;
-
-    if (bodyUserId && bodyUserId !== decodedToken.uid) {
-      const profile = await getUserProfile(decodedToken.uid);
-      if (!profile || profile.role !== "admin") {
-        return NextResponse.json(
-          {
-            error:
-              "Forbidden: You are not authorized to update another user's settings.",
-          },
-          { status: 403 },
-        );
-      }
-      targetUserId = bodyUserId;
-      isOperatorAdmin = true;
-    }
-
-    const db = await connectDb();
-
-    await db
-      .collection("settings")
-      .updateOne(
-        { userId: targetUserId },
-        { $set: { ...settings, updatedAt: new Date() } },
-        { upsert: true },
-      );
-
-    return NextResponse.json(
-      { message: "Settings saved successfully" },
-      { status: 200 },
-    );
-  } catch (error) {
-    return NextResponse.json(
-      { error: "Failed to save settings" },
-      { status: 500 },
-    );
+  if (!parsed.success) {
+    throw new ValidationError("Bad Request: Unrecognized or invalid fields.");
   }
-}
+
+  const { userId: bodyUserId, ...settings } = parsed.data;
+  
+  let targetUserId = decodedToken.uid;
+  let isOperatorAdmin = false;
+
+  if (bodyUserId && bodyUserId !== decodedToken.uid) {
+    const profile = await getUserProfile(decodedToken.uid);
+    if (!profile || profile.role !== "admin") {
+      throw new ForbiddenError("Forbidden: You are not authorized to update another user's settings.");
+    }
+    targetUserId = bodyUserId;
+    isOperatorAdmin = true;
+  }
+
+  const flattenObject = (obj, prefix = "") => {
+    return Object.keys(obj).reduce((acc, k) => {
+      const pre = prefix.length ? prefix + "." : "";
+      if (typeof obj[k] === "object" && obj[k] !== null && !Array.isArray(obj[k])) {
+        Object.assign(acc, flattenObject(obj[k], pre + k));
+      } else {
+        acc[pre + k] = obj[k];
+      }
+      return acc;
+    }, {});
+  };
+
+  const updatePayload = flattenObject(settings);
+  updatePayload.updatedAt = new Date();
+
+  const db = await connectDb();
+
+  await db.collection("settings").updateOne(
+    { userId: targetUserId },
+    { $set: updatePayload },
+    { upsert: true }
+  );
+
+  console.log(`[Audit Log] Settings updated successfully for target user: ${targetUserId} by operator: ${decodedToken.uid} (Role: ${isOperatorAdmin ? "admin" : "owner"})`);
+
+  return NextResponse.json({ message: "Settings saved successfully" });
+});
