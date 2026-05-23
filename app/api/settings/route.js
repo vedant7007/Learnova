@@ -7,6 +7,8 @@ import { withErrorHandler, authenticateRequest } from "@/lib/error-handler";
 import { ValidationError, ForbiddenError } from "@/lib/errors";
 import logger from "@/utils/logger"; // Import the central Winston logger
 
+export const dynamic = "force-dynamic";
+
 const settingsSchema = z
   .object({
     userId: z.string().optional(),
