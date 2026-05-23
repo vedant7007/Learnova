@@ -1,5 +1,10 @@
-import { jsonError, jsonSuccess } from "@/lib/api-response";
-import { verifyFirebaseToken } from "@/lib/firebase-admin";
+import { jsonSuccess } from "@/lib/api-response";
+import { detectInjection, sanitizeMessage, buildSecureMessages } from "@/utils/promptGuard";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { withErrorHandler, authenticateRequest } from "@/lib/error-handler";
+import { AppError, ValidationError } from "@/lib/errors";
+
+export const dynamic = "force-dynamic";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MAX_MESSAGE_LENGTH = 2000;
@@ -50,13 +55,14 @@ export async function POST(request) {
     const rawMessage = typeof body.message === "string" ? body.message : body.userMessage;
     const trimmedMessage = rawMessage?.trim();
 
-    if (!trimmedMessage) {
-      return jsonError("Message is required", 400);
-    }
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new AppError("Groq API key is not configured", 500);
+  }
 
-    if (trimmedMessage.length > MAX_MESSAGE_LENGTH) {
-      return jsonError("Message is too long", 400);
-    }
+  const timeoutMs = parseInt(process.env.GROQ_TIMEOUT || "30000", 10) || 30000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     // 4. API Configuration
     const apiKey = process.env.GROQ_API_KEY;
@@ -92,8 +98,7 @@ export async function POST(request) {
           temperature: 0.7,
         }),
       });
-    } finally {
-      clearTimeout(timeoutId);
+      errorBody = null;
     }
 
     if (!response.ok) {
