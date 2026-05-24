@@ -416,15 +416,15 @@ export function Navbar() {
 
                 </div>
               ) : (
-                <Button 
-                  asChild 
-                  size="default" 
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-5 h-10 text-sm shadow-sm active:scale-98 transition-all"
+                <Button
+                  asChild
+                  size="default"
+                  className="h-10 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-blue-700 hover:shadow-md hover:shadow-blue-600/30 dark:hover:shadow-blue-500/20"
                 >
                   <Link href="/auth">
                     <span className="flex items-center gap-2">
                       Login
-                      <Sparkles className="h-4 w-4 text-blue-200" />
+                      <Sparkles className="h-4 w-4 text-blue-200 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6" />
                     </span>
                   </Link>
                 </Button>
@@ -524,11 +524,15 @@ export function Navbar() {
             {/* Primary Action Buttons */}
             <div className="pt-2 border-t border-zinc-100 dark:border-zinc-900">
               {isAuthenticated ? (
-                <Button onClick={handleLogout} variant="destructive" size="default" className="w-full text-white rounded-lg text-sm h-10">
+                <Button onClick={handleLogout} variant="destructive" size="default" className="h-10 w-full rounded-lg text-sm">
                   <LogOut className="h-4 w-4 mr-2" /> Logout
                 </Button>
               ) : (
-                <Button asChild size="default" className="w-full bg-blue-600 text-white rounded-lg text-sm h-10">
+                <Button
+                  asChild
+                  size="default"
+                  className="h-10 w-full rounded-lg bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md hover:shadow-blue-600/30"
+                >
                   <Link href="/auth" onClick={() => setIsMenuOpen(false)}>
                     <span className="flex items-center gap-2">
                       Get Started <Sparkles className="h-4 w-4 text-blue-200" />
