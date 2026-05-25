@@ -4,6 +4,9 @@ const withPWA = withPWAInit({
   dest: "public",
   customWorkerDir: "worker",
   disable: process.env.NODE_ENV === "development",
+  fallbacks: {
+    document: "/offline.html",
+  },
   register: true,
   skipWaiting: true,
   reloadOnOnline: true,
@@ -12,6 +15,21 @@ const withPWA = withPWAInit({
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
+      {
+        urlPattern: /^https?:\/\/.*$/,
+        handler: "NetworkFirst",
+        options: {
+          cacheName: "pages",
+          networkTimeoutSeconds: 10,
+          plugins: [
+            {
+              handlerDidError: async () => {
+                return caches.match("/offline.html", { ignoreSearch: true });
+              },
+            },
+          ],
+        },
+      },
       {
         urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
         handler: "CacheFirst",

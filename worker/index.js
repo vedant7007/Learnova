@@ -23,10 +23,7 @@ async function syncAttendanceSW() {
   try {
     const response = await fetch("/api/attendance/sync", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      // Credentials same-origin ensures cookies (like authToken) are sent!
+      headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       body: JSON.stringify({ records }),
     });
@@ -37,8 +34,6 @@ async function syncAttendanceSW() {
         for (const id of data.syncedIds) {
           await removeFromOutbox(id);
         }
-        
-        // Notify any open clients that sync completed
         const clients = await self.clients.matchAll();
         clients.forEach((client) => {
           client.postMessage({ type: "SYNC_COMPLETE", count: data.syncedIds.length });
@@ -47,7 +42,7 @@ async function syncAttendanceSW() {
     }
   } catch (error) {
     console.error("[Service Worker] Error during background sync:", error);
-    throw error; // throw to let the browser retry later
+    throw error;
   }
 }
 
@@ -55,5 +50,20 @@ self.addEventListener("sync", (event) => {
   if (event.tag === "sync-attendance") {
     console.log("[Service Worker] Handling sync-attendance event");
     event.waitUntil(syncAttendanceSW());
+  }
+});
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .catch(async () => {
+          const cache = await caches.open("pages");
+          const cached = await caches.match("/offline.html");
+          return cached || new Response("You are offline", {
+            headers: { "Content-Type": "text/html" },
+          });
+        })
+    );
   }
 });
