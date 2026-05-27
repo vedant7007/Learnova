@@ -10,6 +10,7 @@ export function useIdleTimeout() {
   const logoutTimer = useRef(null);
   const warningTimer = useRef(null);
   const warningToastId = useRef(null);
+  const throttleTimer = useRef(null);
 
   const clearTimers = () => {
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
@@ -39,12 +40,31 @@ export function useIdleTimeout() {
 
   useEffect(() => {
     const events = ["mousemove", "keydown", "click", "touchstart", "scroll"];
-    events.forEach((e) => window.addEventListener(e, resetTimers));
+    
+    const throttledReset = () => {
+      if (throttleTimer.current) return;
+      
+      throttleTimer.current = setTimeout(() => {
+        throttleTimer.current = null;
+      }, 1000);
+      
+      resetTimers();
+    };
+
+    events.forEach((e) => window.addEventListener(e, throttledReset, { passive: true }));
     resetTimers();
 
     return () => {
       clearTimers();
-      events.forEach((e) => window.removeEventListener(e, resetTimers));
+      if (throttleTimer.current) clearTimeout(throttleTimer.current);
+      // Dismiss the warning toast if it is still visible when the component unmounts.
+      // react-hot-toast keeps a global store that outlives any single component, so
+      // without this the "You will be logged out" message persists across navigation.
+      if (warningToastId.current) {
+        toast.dismiss(warningToastId.current);
+        warningToastId.current = null;
+      }
+      events.forEach((e) => window.removeEventListener(e, throttledReset));
     };
   }, []);
 }

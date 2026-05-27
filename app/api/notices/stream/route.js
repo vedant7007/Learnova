@@ -1,114 +1,266 @@
 import { authenticateRequest } from "@/lib/error-handler";
 import { getUserProfile } from "@/lib/firebase-admin";
-import { connectDb } from "@/lib/mongodb";
+import { connectDbForSSE } from "@/lib/mongodb";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
+const MAX_PER_USER = 3;
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const HEARTBEAT_INTERVAL_MS = 15000;
+const POLL_INTERVAL_MS = 10000;
+const STREAM_RECONNECT_BASE_MS = 1000;
+const STREAM_RECONNECT_MAX_MS = 30000;
+
+// ── Connection Registry ────────────────────────────────────────────────────────
+const connections = new Map();
+const userConnectionCount = new Map();
+let nextConnId = 1;
+
+function registerConnection(userId) {
+  const current = userConnectionCount.get(userId) || 0;
+  if (current >= MAX_PER_USER) return null;
+  const connId = nextConnId++;
+  connections.set(connId, userId);
+  userConnectionCount.set(userId, current + 1);
+  return connId;
+}
+
+function unregisterConnection(connId) {
+  const userId = connections.get(connId);
+  if (!userId) return;
+  connections.delete(connId);
+  const count = userConnectionCount.get(userId) || 0;
+  if (count <= 1) {
+    userConnectionCount.delete(userId);
+  } else {
+    userConnectionCount.set(userId, count - 1);
+  }
+}
+
+// ── Shared Notice Listener Bus ─────────────────────────────────────────────────
+const noticeListeners = new Map();
+
+function addNoticeListener(userId, cb) {
+  if (!noticeListeners.has(userId)) {
+    noticeListeners.set(userId, new Set());
+  }
+  noticeListeners.get(userId).add(cb);
+}
+
+function removeNoticeListener(userId, cb) {
+  const cbs = noticeListeners.get(userId);
+  if (!cbs) return;
+  cbs.delete(cb);
+  if (cbs.size === 0) noticeListeners.delete(userId);
+}
+
+function broadcastNotice(doc) {
+  for (const [, cbs] of noticeListeners) {
+    for (const cb of cbs) cb(doc);
+  }
+}
+
+// ── MongoDB Change Stream (single per process, auto-reconnect) ─────────────────
+let sharedStream = null;
+let sharedDb = null;
+let streamReconnectTimer = null;
+let streamReconnectRetryCount = 0;
+
+async function startChangeStream() {
+  stopChangeStream();
+  try {
+    sharedDb = await connectDbForSSE();
+    const coll = sharedDb.collection("notices");
+    sharedStream = coll.watch([{ $match: { operationType: "insert" } }]);
+    sharedStream.on("change", (change) => {
+      const doc = change.fullDocument;
+      if (doc) broadcastNotice(doc);
+    });
+    sharedStream.on("error", () => scheduleChangeStreamReconnect());
+    sharedStream.on("close", () => scheduleChangeStreamReconnect());
+    streamReconnectRetryCount = 0;
+  } catch {
+    scheduleChangeStreamReconnect();
+  }
+}
+
+function stopChangeStream() {
+  if (streamReconnectTimer) {
+    clearTimeout(streamReconnectTimer);
+    streamReconnectTimer = null;
+  }
+  if (sharedStream) {
+    try { sharedStream.close(); } catch {}
+    sharedStream = null;
+  }
+  sharedDb = null;
+}
+
+function scheduleChangeStreamReconnect() {
+  const delay = Math.min(
+    STREAM_RECONNECT_BASE_MS * Math.pow(2, streamReconnectRetryCount),
+    STREAM_RECONNECT_MAX_MS
+  );
+  streamReconnectRetryCount++;
+  streamReconnectTimer = setTimeout(() => {
+    streamReconnectTimer = null;
+    startChangeStream();
+  }, delay);
+}
+
+// ── Shared Polling Fallback ────────────────────────────────────────────────────
+let pollingInterval = null;
+let pollingLastCheck = new Date();
+
+function startPollingIfNeeded() {
+  if (pollingInterval || noticeListeners.size === 0) return;
+  pollingInterval = setInterval(async () => {
+    if (noticeListeners.size === 0) {
+      stopPolling();
+      return;
+    }
+    try {
+      if (!sharedDb) sharedDb = await connectDbForSSE();
+      const newNotices = await sharedDb
+        .collection("notices")
+        .find({ createdAt: { $gt: pollingLastCheck } })
+        .toArray();
+      if (newNotices.length > 0) {
+        pollingLastCheck = new Date();
+        newNotices.forEach((n) => broadcastNotice(n));
+      }
+    } catch {}
+  }, POLL_INTERVAL_MS);
+}
+
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+}
+
+// ── Request Handler ────────────────────────────────────────────────────────────
+
 export async function GET(request) {
   try {
-    // Authenticate and establish tenant/role context BEFORE opening stream
     const decodedToken = await authenticateRequest(request);
     const profile = await getUserProfile(decodedToken.uid);
     const userRole = profile?.role || "student";
-    
+    const userId = decodedToken.uid;
+
+    const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
+    const rateLimitResult = await checkRateLimit(`notices_stream_${ip}_${userId}`);
+    if (!rateLimitResult.allowed) {
+      return new Response(JSON.stringify({ error: "Too many connections. Please slow down." }), {
+        status: 429,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     let isConnected = true;
+    let heartbeatTimer;
+    let idleTimer;
+    let connId;
 
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
         const sendEvent = (event, data) => {
           if (!isConnected) return;
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          try {
+            controller.enqueue(
+              encoder.encode(
+                `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+              )
+            );
+          } catch {
+            cleanup();
+          }
         };
 
-        const db = await connectDb();
+        const cleanup = () => {
+          if (!isConnected) return;
+          isConnected = false;
+          clearInterval(heartbeatTimer);
+          if (idleTimer) clearTimeout(idleTimer);
+          if (connId) {
+            unregisterConnection(connId);
+            connId = null;
+          }
+          removeNoticeListener(userId, onNotice);
+          if (noticeListeners.size === 0) {
+            stopChangeStream();
+            stopPolling();
+          }
+          try { controller.close(); } catch {}
+        };
+
+        connId = registerConnection(userId);
+        if (connId === null) {
+          sendEvent("error", {
+            message:
+              "Too many connections. Close other tabs and try again.",
+          });
+          cleanup();
+          return;
+        }
+
+        request.signal.addEventListener("abort", cleanup);
+
+        const db = await connectDbForSSE();
         const noticesCollection = db.collection("notices");
 
-        // 1. Send initial batch of notices instantly
         try {
-           const initialNotices = await noticesCollection
-             .find({ targetAudience: userRole })
-             .sort({ isPinned: -1, createdAt: -1 })
-             .limit(50)
-             .toArray();
-           
-           const formattedNotices = initialNotices.map(n => ({ ...n, id: n._id.toString() }));
-           sendEvent("initial", formattedNotices);
-        } catch (error) {
-           console.error("Initial fetch error:", error);
-           sendEvent("error", { message: "Failed to fetch initial notices" });
-           return controller.close();
+          const initialNotices = await noticesCollection
+            .find({ targetAudience: userRole })
+            .sort({ isPinned: -1, createdAt: -1 })
+            .limit(50)
+            .toArray();
+          const formattedNotices = initialNotices.map((n) => ({
+            ...n,
+            id: n._id.toString(),
+          }));
+          sendEvent("initial", formattedNotices);
+        } catch (err) {
+          console.error("Initial fetch error:", err);
+          sendEvent("error", { message: "Failed to fetch initial notices" });
+          cleanup();
+          return;
         }
 
-        let changeStream;
-        let pollInterval;
+        const onNotice = (doc) => {
+          if (!isConnected) return;
+          if (
+            doc.targetAudience &&
+            doc.targetAudience.includes(userRole)
+          ) {
+            sendEvent("new-notice", {
+              ...doc,
+              id: doc._id.toString(),
+            });
+          }
+        };
 
-        function startPollingFallback() {
-          let lastCheckTime = new Date();
-          pollInterval = setInterval(async () => {
-             if (!isConnected) return clearInterval(pollInterval);
-             try {
-                const newNotices = await noticesCollection
-                  .find({ 
-                    targetAudience: userRole, 
-                    createdAt: { $gt: lastCheckTime } 
-                  })
-                  .toArray();
-                
-                if (newNotices.length > 0) {
-                  lastCheckTime = new Date();
-                  newNotices.forEach(notice => {
-                    sendEvent("new-notice", { ...notice, id: notice._id.toString() });
-                  });
-                }
-             } catch (e) {
-                console.error("Polling error:", e);
-             }
-          }, 10000); // 10s fallback polling internally
+        addNoticeListener(userId, onNotice);
+
+        if (!sharedStream) {
+          startChangeStream();
         }
+        startPollingIfNeeded();
 
-        // 2. Setup Realtime Broadcast
-        try {
-          // Attempt MongoDB Change Stream (Only works on Replica Sets)
-          changeStream = noticesCollection.watch([
-            { $match: { operationType: "insert" } }
-          ]);
+        const resetIdle = () => {
+          if (idleTimer) clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => cleanup(), IDLE_TIMEOUT_MS);
+        };
+        resetIdle();
 
-          changeStream.on("change", (change) => {
-             if (!isConnected) return;
-             const notice = change.fullDocument;
-             
-             // Strict Multi-Tenant Enforcement: only send if user is in target audience
-             if (notice.targetAudience && notice.targetAudience.includes(userRole)) {
-               const formatted = { ...notice, id: notice._id.toString() };
-               sendEvent("new-notice", formatted);
-             }
-          });
-
-          changeStream.on("error", (error) => {
-             console.error("Change stream error, falling back to polling:", error.message);
-             if (changeStream) changeStream.close().catch(() => {});
-             startPollingFallback();
-          });
-        } catch (error) {
-          console.warn("Change Stream not supported. Falling back to internal polling.");
-          startPollingFallback();
-        }
-
-        // 3. Keep-alive Heartbeat to prevent premature proxy termination
-        const heartbeatInterval = setInterval(() => {
+        heartbeatTimer = setInterval(() => {
           sendEvent("ping", { time: new Date().toISOString() });
-        }, 15000);
+        }, HEARTBEAT_INTERVAL_MS);
 
-        // 4. Clean up completely on disconnect
-        request.signal.addEventListener("abort", () => {
-           isConnected = false;
-           clearInterval(heartbeatInterval);
-           if (pollInterval) clearInterval(pollInterval);
-           if (changeStream) changeStream.close().catch(() => {});
-           try { controller.close(); } catch (e) {}
-        });
-      }
+      },
     });
 
     return new Response(stream, {
@@ -116,15 +268,14 @@ export async function GET(request) {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         "Connection": "keep-alive",
-        "X-Accel-Buffering": "no" // Disables Nginx buffering on platforms like Vercel
-      }
+        "X-Accel-Buffering": "no",
+      },
     });
-
   } catch (error) {
     console.error("SSE stream auth error:", error);
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { 
-      status: 401, 
-      headers: { "Content-Type": "application/json" } 
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
     });
   }
 }

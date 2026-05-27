@@ -21,6 +21,8 @@ export default function AuthForm({
   setFullName,
   instituteName,
   setInstituteName,
+  inviteCode,
+  setInviteCode,
   errors,
   setErrors,
   isLoading,
@@ -48,6 +50,8 @@ export default function AuthForm({
       result = validateName(value, "Full Name");
     } else if (field === "instituteName") {
       result = validateRequired(value, "Institute Name");
+    } else if (field === "inviteCode") {
+      result = validateRequired(value, "Invite Code");
     } else if (field === "email") {
       result = validateEmail(value);
     } else if (field === "password") {
@@ -81,8 +85,8 @@ export default function AuthForm({
                   >
                     <IconComponent className="w-6 h-6 text-white" />
                   </div>
-                  <div className="text-left">
-                    <h4 className="font-semibold text-white">{config.title}</h4>
+                    <div className="text-left">
+                    <h4 className="font-semibold text-card-foreground">{config.title}</h4>
                     <p className="text-muted-foreground text-sm">
                       Click to change role
                     </p>
@@ -94,7 +98,7 @@ export default function AuthForm({
         </div>
       )}
 
-      <div className="bg-card backdrop-blur-xl rounded-2xl shadow-2xl border border-border p-8">
+      <div className="bg-card backdrop-blur-xl rounded-2xl shadow-2xl border border-border p-8 min-h-[620px] flex flex-col justify-between transition-all duration-300">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-foreground mb-2">
             {isLogin ? "Welcome Back" : "Create Account"}
@@ -176,6 +180,38 @@ export default function AuthForm({
                   )}
                 </div>
               )}
+
+              {(selectedRole === USER_ROLES.TEACHER || selectedRole === USER_ROLES.INSTITUTE) && (
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2 flex items-center justify-between">
+                    <span>Invite Code</span>
+                    <span className="text-xs text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded-full border border-border">Required for elevated access</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter your registration code"
+                    value={inviteCode}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setInviteCode(value);
+                      if (errors.inviteCode) {
+                        validateField("inviteCode", value);
+                      }
+                    }}
+                    onBlur={(e) => validateField("inviteCode", e.target.value)}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-background text-foreground placeholder-muted-foreground ${
+                      errors.inviteCode
+                        ? "border-red-500/50"
+                        : "border-border"
+                    }`}
+                  />
+                  {errors.inviteCode && (
+                    <p className="text-red-400 text-sm mt-1">
+                      {errors.inviteCode}
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -246,31 +282,41 @@ export default function AuthForm({
             {errors.password && (
               <p className="text-red-400 text-sm mt-1">{errors.password}</p>
             )}
-            {!isLogin && password && (
-  <div className="mt-2 space-y-1 text-xs">
-
-    <p className={password.length >= 8 ? "text-green-400" : "text-red-400"}>
-      {password.length >= 8 ? "✓" : "✗"} Minimum 8 characters
-    </p>
-
-    <p className={/[A-Z]/.test(password) ? "text-green-400" : "text-red-400"}>
-      {/[A-Z]/.test(password) ? "✓" : "✗"} One uppercase letter
-    </p>
-
-    <p className={/[a-z]/.test(password) ? "text-green-400" : "text-red-400"}>
-      {/[a-z]/.test(password) ? "✓" : "✗"} One lowercase letter
-    </p>
-
-    <p className={/[0-9]/.test(password) ? "text-green-400" : "text-red-400"}>
-      {/[0-9]/.test(password) ? "✓" : "✗"} One number
-    </p>
-
-    <p className={/[^A-Za-z0-9]/.test(password) ? "text-green-400" : "text-red-400"}>
-      {/[^A-Za-z0-9]/.test(password) ? "✓" : "✗"} One special character
-    </p>
-
-  </div>
-)}
+            {!isLogin && !errors.password && (
+              <p className="text-gray-400 text-xs mt-1">
+                Min 8 characters with upper, lower, number, and special character.
+              </p>
+            )}
+            {!isLogin && (
+              <div className="mt-3 space-y-1.5 text-xs bg-slate-950/20 p-3 rounded-lg border border-border/50">
+                <p className="font-semibold text-slate-400 mb-1">Password Requirements:</p>
+                <div className="flex items-center gap-2">
+                  <span className={password.length >= 8 ? "text-green-400" : "text-gray-400"}>
+                    {password.length >= 8 ? "✓" : "○"} 8+ characters
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={/[A-Z]/.test(password) ? "text-green-400" : "text-gray-400"}>
+                    {/[A-Z]/.test(password) ? "✓" : "○"} At least one uppercase letter
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={/[a-z]/.test(password) ? "text-green-400" : "text-gray-400"}>
+                    {/[a-z]/.test(password) ? "✓" : "○"} At least one lowercase letter
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={/\d/.test(password) ? "text-green-400" : "text-gray-400"}>
+                    {/\d/.test(password) ? "✓" : "○"} At least one number
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={/[^A-Za-z0-9]/.test(password) ? "text-green-400" : "text-gray-400"}>
+                    {/[^A-Za-z0-9]/.test(password) ? "✓" : "○"} At least one special character
+                  </span>
+                </div>
+              </div>
+            )}
             {!isLogin && password && (
               <div className="mt-3 space-y-2">
                 <div className="flex items-center justify-between text-xs">
