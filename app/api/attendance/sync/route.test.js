@@ -3,6 +3,9 @@ import { parseJSON } from "@/lib/error-handler";
 import { requireAuth } from "@/lib/rbac";
 import { getUserProfile } from "@/lib/firebase-admin";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { assertApiSuccess } from "@/testUtils/assertApiSuccess";
+import { assertApiError } from "@/testUtils/assertApiError";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 jest.mock("@/lib/rbac", () => ({
   requireAuth: jest.fn(),
@@ -15,6 +18,10 @@ jest.mock("@/lib/rateLimit", () => ({
 jest.mock("@/lib/firebase-admin", () => ({
   initFirebaseAdmin: jest.fn(),
   getUserProfile: jest.fn(),
+}));
+
+jest.mock("@/lib/gamification-service", () => ({
+  awardXp: jest.fn().mockResolvedValue({ xpAwarded: 50, newLevel: null }),
 }));
 
 jest.mock("firebase-admin/firestore", () => ({
@@ -33,15 +40,51 @@ jest.mock("next/server", () => ({
   },
 }));
 
-jest.mock("@/lib/error-handler", () => ({
-  withErrorHandler: (handler) => handler,
-  parseJSON: jest.fn(),
-}));
+jest.mock("@/lib/error-handler", () => {
+  const { AppError } = require("@/lib/errors");
+  return {
+    withErrorHandler: (handler) => {
+      return async (request, ...args) => {
+        try {
+          return await handler(request, ...args);
+        } catch (error) {
+          if (error instanceof AppError) {
+            const payload = error.originalMessage !== undefined ? error.originalMessage : error.message;
+            return {
+              status: error.statusCode,
+              json: async () => ({ error: payload }),
+            };
+          }
+          return {
+            status: 500,
+            json: async () => ({ error: error.message || "Internal server error" }),
+          };
+        }
+      };
+    },
+    parseJSON: jest.fn(),
+  };
+});
 
 describe("attendance sync route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    checkRateLimit.mockResolvedValue({ allowed: true, remaining: 9 });
   });
+
+  const createMockRequest = (headers = {}, body = {}) => {
+    const headersMap = new Map(
+      Object.entries({
+        "x-forwarded-for": "127.0.0.1",
+        ...headers,
+      })
+    );
+    return {
+      headers: {
+        get: (key) => headersMap.get(key.toLowerCase()) || null,
+      },
+    };
+  };
 
   test("uses server profile data instead of client-supplied attendance identity", async () => {
     requireAuth.mockResolvedValue({
@@ -86,10 +129,10 @@ describe("attendance sync route", () => {
       collection: jest.fn(() => collectionRef),
     });
 
-    const response = await POST({});
+    const response = await POST(createMockRequest());
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
+    const body = await assertApiSuccess(response, 200);
+    expect(body).toEqual({
       success: true,
       syncedIds: [1],
       rejectedIds: [],
@@ -144,14 +187,43 @@ describe("attendance sync route", () => {
       collection: jest.fn(() => collectionRef),
     });
 
-    const response = await POST({});
+    const response = await POST(createMockRequest());
 
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({
-      success: false,
-      error: "User profile not found for attendance sync.",
-    });
+    await assertApiError(response, 404, "User profile not found for attendance sync.");
     expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  test("rejects sync when request is unauthorized", async () => {
+    const { UnauthorizedError } = require("@/lib/errors");
+    requireAuth.mockRejectedValue(new UnauthorizedError("Unauthorized"));
+
+    const response = await POST(createMockRequest());
+    await assertApiError(response, 401, "Unauthorized");
+  });
+
+  test("rejects sync when validation fails on invalid payload structure", async () => {
+    requireAuth.mockResolvedValue({
+      uid: "user-123",
+      email: "auth@example.com",
+      name: "Auth Name",
+    });
+
+    parseJSON.mockResolvedValue({ records: [] });
+
+    const response = await POST(createMockRequest());
+    expect(response.status).toBe(500); // ZodError treated as unhandled internal server error (500)
+  });
+
+  test("rejects sync when rate limit is exceeded", async () => {
+    requireAuth.mockResolvedValue({
+      uid: "user-123",
+      email: "auth@example.com",
+      name: "Auth Name",
+    });
+    checkRateLimit.mockResolvedValue({ allowed: false });
+
+    const response = await POST(createMockRequest());
+    await assertApiError(response, 429, "Too many attempts. Please try again later.");
   });
 
   test("normalizes confidence scores into the valid range", () => {
