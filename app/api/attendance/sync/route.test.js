@@ -150,10 +150,10 @@ describe("attendance sync route", () => {
   });
 
   test("normalizes confidence scores into the valid range", () => {
-    expect(normalizeConfidenceScore(-2)).toBe(0);
-    expect(normalizeConfidenceScore(0.42)).toBe(0.42);
+    expect(normalizeConfidenceScore(-2)).toBe(null);
+    expect(normalizeConfidenceScore(0.42)).toBe(null);
     expect(normalizeConfidenceScore(75)).toBe(0.75);
     expect(normalizeConfidenceScore(150)).toBe(1);
-    expect(normalizeConfidenceScore(Number.NaN)).toBe(0);
+    expect(normalizeConfidenceScore(Number.NaN)).toBe(null);
   });
 });
