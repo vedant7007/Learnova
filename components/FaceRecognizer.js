@@ -33,6 +33,7 @@ export default function FaceRecognizer({ authUser }) {
   const isSubmittingRef = useRef(false);
   const cachedDescriptorsRef = useRef(null);
   const faceMatcherRef = useRef(null);
+  const faceapiRef = useRef(null);
 
   // Animation and Liveness Refs
   const animationFrameId = useRef(null);
@@ -140,6 +141,7 @@ export default function FaceRecognizer({ authUser }) {
       setFinished(false);
       setAttendanceState("idle");
     } catch (err) {
+      if (!isMounted.current) return;
       setIsLoading(false);
       if (err.name === "NotAllowedError") {
         setMessage(
@@ -157,10 +159,14 @@ export default function FaceRecognizer({ authUser }) {
   };
 
   useEffect(() => {
+    isMounted.current = true;
+
     const loadModels = async () => {
       try {
+        if (!isMounted.current) return;
         setMessage("Downloading ML models...");
         const faceapi = await import("face-api.js");
+        faceapiRef.current = faceapi;
 
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
@@ -168,9 +174,11 @@ export default function FaceRecognizer({ authUser }) {
           faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
         ]);
 
+        if (!isMounted.current) return;
         setMessage("Models loaded ✅ Starting webcam...");
         startVideo();
       } catch (err) {
+        if (!isMounted.current) return;
         setMessage("Failed to load models.");
         setIsLoading(false);
         setFinished(true);
@@ -179,6 +187,7 @@ export default function FaceRecognizer({ authUser }) {
 
     const startVideo = async () => {
       try {
+        if (!isMounted.current) return;
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode },
         });
@@ -212,6 +221,7 @@ export default function FaceRecognizer({ authUser }) {
           };
         }
       } catch (err) {
+        if (!isMounted.current) return;
         setMessage("Cannot access webcam ❌");
         setFinished(true);
         setIsLoading(false);
@@ -241,21 +251,32 @@ export default function FaceRecognizer({ authUser }) {
         videoRef.current.load();
       }
 
-      if (faceapi.tf?.disposeVariables) {
-        faceapi.tf.disposeVariables();
-      }
+      // CRITICAL FIX: Removed tf.disposeVariables() from here.
+      // Toggling the camera (facingMode) triggers this cleanup. We must NOT destroy the 
+      // heavy ML models from memory just to flip the camera track.
     };
   }, [labelsLoading, error, labels, facingMode]);
+
+  // Handle ultimate cleanup only on component unmount
+  useEffect(() => {
+    return () => {
+      if (faceapiRef.current?.tf?.disposeVariables) {
+        faceapiRef.current.tf.disposeVariables();
+      }
+    };
+  }, []);
 
   const buildFaceMatcher = async () => {
     if (!labels || labels.length === 0) return;
 
     const faceapi = await import("face-api.js");
+    faceapiRef.current = faceapi;
 
     const labeledFaceDescriptors = (
       await Promise.all(
         labels.map(async (student) => {
           try {
+            if (!isMounted.current) return null;
             // Check if pre-calculated face descriptor exists in the database
             if (
               student.faceDescriptor &&
@@ -271,6 +292,7 @@ export default function FaceRecognizer({ authUser }) {
             if (!student.hasImage) return null;
             const imgUrl = `/api/images?id=${student._id}`;
             const img = await faceapi.fetchImage(imgUrl);
+            if (!isMounted.current) return null;
             const detection = await faceapi
               .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
               .withFaceLandmarks()
@@ -283,7 +305,9 @@ export default function FaceRecognizer({ authUser }) {
             }
             return null;
           } catch (err) {
-            isSubmittingRef.current = false;
+            if (isMounted.current) {
+              isSubmittingRef.current = false;
+            }
             console.error("Face descriptor error:", err);
             return null;
           }
@@ -291,17 +315,15 @@ export default function FaceRecognizer({ authUser }) {
       )
     ).filter(Boolean);
 
+    if (!isMounted.current) return;
     cachedDescriptorsRef.current = labeledFaceDescriptors;
 
     if (!labeledFaceDescriptors.length) {
-      if (isMounted.current) {
-        setMessage("No labeled faces found ❌");
-        setFinished(true);
-      }
+      setMessage("No labeled faces found ❌");
+      setFinished(true);
       return;
     }
 
-    if (!isMounted.current) return;
     faceMatcherRef.current = new faceapi.FaceMatcher(
       labeledFaceDescriptors,
       0.6,
@@ -319,6 +341,8 @@ export default function FaceRecognizer({ authUser }) {
     }
 
     const faceapi = await import("face-api.js");
+    faceapiRef.current = faceapi;
+    if (!isMounted.current) return;
     const video = videoRef.current;
 
     // Ensure video is playing and has valid dimensions before processing
@@ -522,6 +546,8 @@ export default function FaceRecognizer({ authUser }) {
           confidenceScore: confidence,
         });
 
+        if (!isMounted.current) return;
+
         if (result.queuedOffline) {
           setAttendanceState("queued-offline");
           setMessage(
@@ -533,6 +559,7 @@ export default function FaceRecognizer({ authUser }) {
           );
         }
       } catch (err) {
+        if (!isMounted.current) return;
         setAttendanceState("error");
         setMessage(err.message || "Could not save attendance.");
       }

@@ -8,14 +8,15 @@ import {
   limit,
 } from "firebase/firestore";
 
-import { db } from "@/lib/firebaseConfig";
+import { auth, db } from "@/lib/firebaseConfig";
 
 import { recalculateAttendanceRate } from "./statsService";
 import { saveToOutbox } from "@/lib/offlineStore";
 import { registerBackgroundSync } from "@/lib/syncService";
+import { getTodayKeyLocal } from "@/lib/dateUtils";
 
 function getTodayKey() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayKeyLocal();
 }
 
 /**
@@ -92,10 +93,16 @@ export async function recordAttendance({
   }
 
   // SECURE SERVER RECORDING
+  const token = await auth?.currentUser?.getIdToken();
+  if (!token) {
+    throw new Error("Authentication token unavailable. Please sign in again.");
+  }
+
   const response = await fetch("/api/attendance/record", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
     },
     body: JSON.stringify({
       userId,

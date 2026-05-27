@@ -9,13 +9,21 @@ jest.mock("@/lib/error-handler", () => ({
   parseJSON: jest.fn(),
 }));
 
+jest.mock("@/lib/rateLimit", () => ({
+  checkRateLimit: jest.fn().mockResolvedValue({ allowed: true, remaining: 9 }),
+}));
+
 jest.mock("@/lib/firebase-admin", () => ({
   initFirebaseAdmin: jest.fn(),
   getUserProfile: jest.fn(),
 }));
 
 jest.mock("@/lib/gamification-service", () => ({
-  awardXp: jest.fn().mockResolvedValue({ xpAwarded: 50, newLevel: null })
+  awardXp: jest.fn().mockResolvedValue({ xpAwarded: 50, newLevel: null }),
+}));
+
+jest.mock("@/lib/dateUtils", () => ({
+  getLocalDateKey: jest.fn(() => "2026-05-25"),
 }));
 
 jest.mock("firebase-admin/firestore", () => ({
