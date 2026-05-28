@@ -13,10 +13,19 @@ import {
 } from "lucide-react";
 import ShareButton from "@/components/ui/ShareButton";
 import toast from "react-hot-toast";
+import { useParams, useRouter, notFound } from "next/navigation"; // 🌟 Added notFound here
+import { routeParamSchema } from "@/lib/validations/auth"; // 🌟 Added your validation schema
 
 export default function CourseDetailPage() {
   const params = useParams();
   const router = useRouter();
+  
+  const validationCheck = routeParamSchema.safeParse({ id: params.id });
+  
+  if (!validationCheck.success) {
+    return notFound(); // Gracesfully triggers Next.js 404 handler interface instead of crashing client UI
+  }
+
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
