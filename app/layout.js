@@ -14,6 +14,7 @@ import AllProviders from "./providers/AllProviders";
 export { metadata } from "@/lib/seo/siteMetadata";
 import { siteStructuredData } from "@/lib/seo/siteStructuredData";
 import NextTopLoader from "nextjs-toploader";
+import CommandPaletteWrapper from "@/components/CommandPaletteWrapper";
 import RouteAnnouncer from "@/components/RouteAnnouncer";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -85,7 +86,7 @@ export default function RootLayout({ children }) {
         >
           Skip to Main Content
         </a>
-        {/* Cursor glow removed per UX preference */}
+          {/* Cursor glow removed per UX preference */}
 
         <AllProviders>
           <ScrollProgress />
@@ -114,6 +115,7 @@ export default function RootLayout({ children }) {
             <BackToTop />
             <RouteAnnouncer />
 
+            <CommandPaletteWrapper />
             <Toaster
               position="bottom-right"
               toastOptions={{
