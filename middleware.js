@@ -301,11 +301,16 @@ export async function middleware(request) {
     }
   }
 
-  // ── 9. Attach CSP header for pages ──
+  // ── 9. Attach CSP and standard Security headers ──
   const response = NextResponse.next({ request: { headers: requestHeaders } });
 
   if (isPage) {
     response.headers.set("Content-Security-Policy", buildPageCsp());
+    response.headers.set("X-Frame-Options", "SAMEORIGIN");
+    response.headers.set("X-Content-Type-Options", "nosniff");
+    response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    response.headers.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=()");
+    response.headers.set("X-XSS-Protection", "1; mode=block");
   }
 
   return response;
