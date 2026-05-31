@@ -109,7 +109,6 @@ const parseClassStartTime = (time = "") => {
   };
 };
 
-
 const getUpcomingClass = (classes, now) => {
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
