@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import React, { useState, useEffect } from "react"; // Removed duplicate import of useParams and useRouter
 import { motion } from "framer-motion";
 import { 
   BookOpen, 
