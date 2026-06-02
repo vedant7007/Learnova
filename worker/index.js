@@ -1,10 +1,15 @@
 import { processSyncQueue } from "../services/syncQueue";
 
-let csrfTokenCache = null;
+let csrfTokenCache = null; // { token: string, fetchedAt: number }
 let csrfTokenPromise = null;
+const CSRF_TOKEN_TTL_MS = 6 * 24 * 60 * 60 * 1000; // 6 days (1 day before cookie expiry)
 
 function isUnsafeMethod(method) {
   return ["POST", "PUT", "PATCH", "DELETE"].includes((method || "GET").toUpperCase());
+}
+
+function clearCsrfCache() {
+  csrfTokenCache = null;
 }
 
 function isSameOriginApiUrl(url) {
@@ -17,20 +22,36 @@ function isSameOriginApiUrl(url) {
 }
 
 async function getCsrfToken() {
-  if (csrfTokenCache) return csrfTokenCache;
-  if (csrfTokenPromise) return csrfTokenPromise;
+  if (csrfTokenCache) {
+    // Check if cached token has expired (6 days TTL)
+    if (Date.now() - csrfTokenCache.fetchedAt < CSRF_TOKEN_TTL_MS) {
+      return csrfTokenCache.token;
+    }
+    // Token expired, clear cache and fetch fresh
+    csrfTokenCache = null;
+  }
+
+  if (csrfTokenPromise) {
+    return csrfTokenPromise;
+  }
 
   csrfTokenPromise = fetch("/api/auth/csrf", {
     method: "GET",
     credentials: "same-origin",
     cache: "no-store",
   })
-    .then(async (response) => {
-      if (!response.ok) return null;
-      const data = await response.json().catch(() => null);
-      csrfTokenCache = data?.csrfToken || null;
-      return csrfTokenCache;
-    })
+  .then(async (response) => {
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json().catch(() => null);
+    const csrfToken = data?.csrfToken || null;
+    if (csrfToken) {
+      csrfTokenCache = { token: csrfToken, fetchedAt: Date.now() };
+    }
+    return csrfToken;
+  })
     .catch(() => null)
     .finally(() => { csrfTokenPromise = null; });
 
