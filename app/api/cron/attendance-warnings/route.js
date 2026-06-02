@@ -191,33 +191,49 @@ export async function GET(request) {
     const warningLogsToInsert = [];
     const emailsToSend = [];
 
+    // Fetch all students with an instituteId once
+    const allStudents = await db.collection('users').find({
+      role: 'student',
+      instituteId: { $exists: true }
+    }).toArray();
+
+    // Group students by instituteId
+    const studentsByInstitute = new Map();
+    for (const student of allStudents) {
+      const instId = student.instituteId;
+      if (!instId) continue;
+      if (!studentsByInstitute.has(instId)) {
+        studentsByInstitute.set(instId, []);
+      }
+      studentsByInstitute.get(instId).push(student);
+    }
+
+    // Collect all student UIDs for batch cooldown check
+    const allStudentUids = allStudents.map(s => s.firebaseUid).filter(Boolean);
+    const recentWarningUserIds = await getRecentWarningUserIds(db, allStudentUids, cooldownDate);
+
     for (const settings of allSettings) {
       const threshold = settings.institute.lowAttendanceThreshold || 75;
+      const instituteId = settings.instituteId || settings._id?.toString();
+      const instituteStudents = studentsByInstitute.get(instituteId) || [];
 
-      // Fetch all students from MongoDB
-      const students = await db.collection('users').find({ role: 'student' }).toArray();
+      if (instituteStudents.length === 0) continue;
 
-      for (const student of students) {
+      // Load attendance from MongoDB (scoped by institute) for all students in this institute
+      const instituteStudentUids = instituteStudents.map(s => s.firebaseUid).filter(Boolean);
+      const mongoAttendance = await loadMongoAttendanceByUser(db, instituteId, instituteStudentUids);
+
+      for (const student of instituteStudents) {
         const studentUid = student.firebaseUid;
         if (!studentUid) continue;
 
-        // Check recent warning logs to prevent spam
-        const recentLog = await db.collection('warning_logs').findOne({
-          userId: studentUid,
-          createdAt: { $gte: cooldownDate }
-        });
-
-        if (recentLog) {
+        // Skip if warned recently (batch cooldown check)
+        if (recentWarningUserIds.has(studentUid)) {
           continue;
         }
 
-        // Fetch attendance records from Firestore attendance_records collection
-        const attendanceSnapshot = await firestore
-          .collection('attendance_records')
-          .where('userId', '==', studentUid)
-          .get();
-
-        const studentAttendance = attendanceSnapshot.docs.map(doc => doc.data());
+        // Use MongoDB attendance data (scoped by institute) instead of Firestore
+        const studentAttendance = mongoAttendance?.get(studentUid) || [];
 
         const evaluation = evaluateStudentAttendance(studentAttendance, threshold);
 
