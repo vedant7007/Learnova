@@ -74,15 +74,18 @@ export const loginWithEmail = async (email, password, selectedRole) => {
       const userData = userDoc.data();
 
       // Check if role matches selected role
-      if (userData.role !== selectedRole) {
+      const tokenResult = await user.getIdTokenResult();
+      const roleFromClaims = tokenResult.claims.role;
+
+      if (roleFromClaims && roleFromClaims !== selectedRole) {
         await signOut(auth);
         return {
           success: false,
           error: `This account is registered as ${
-            ROLE_CONFIG[userData.role]?.title || "Unknown"
+            ROLE_CONFIG[roleFromClaims]?.title || "Unknown"
           }. Please select the correct role.`,
         };
-      }
+      }     
 
       // Update last login — use updateDoc to avoid overwriting the
       // entire document (including role) with potentially stale data
@@ -94,11 +97,17 @@ export const loginWithEmail = async (email, password, selectedRole) => {
       // claims.  Fire-and-forget — the login succeeds regardless.
       void syncCustomClaims({
         user,
-        role: userData.role,
-        fullName: userData.fullName,
+        role: userData?.role,
+        fullName: userData?.fullName,
       });
 
-      return { success: true, userData };
+      return {
+        success: true,
+        userData: {
+          ...userData,
+          role: roleFromClaims || userData?.role || selectedRole,
+        },
+      };
     } else {
       return { success: false, needsProfile: true };
     }
@@ -263,14 +272,21 @@ export const loginWithGoogle = async (selectedRole, isLogin, additionalData) => 
     const userData = userDoc.data();
 
     // For existing users, check if role matches selected role (for login)
-    if (isLogin && userData && userData.role !== selectedRole) {
-      await signOut(auth);
-      return {
-        success: false,
-        error: `This account is registered as ${
-          ROLE_CONFIG[userData.role]?.title || "Unknown"
-        }. Please select the correct role.`,
-      };
+    if (isLogin && userData) {
+      const tokenResult = await user.getIdTokenResult();
+      const roleFromClaims = tokenResult.claims.role;
+
+      const effectiveRole = roleFromClaims || userData?.role;
+
+      if (effectiveRole && effectiveRole !== selectedRole) {
+        await signOut(auth);
+        return {
+          success: false,
+          error: `This account is registered as ${
+            ROLE_CONFIG[roleFromClaims]?.title || "Unknown"
+          }. Please select the correct role.`,
+        };
+      }
     }
 
     // Update last login for existing users
@@ -282,12 +298,18 @@ export const loginWithGoogle = async (selectedRole, isLogin, additionalData) => 
       // Sync custom claims for existing users to ensure they have the correct role in their token
       void syncCustomClaims({
         user,
-        role: userData.role,
-        fullName: userData.fullName,
+        role: userData?.role,
+        fullName: userData?.fullName,
       });
     }
 
-    return { success: true, userData: userData || { role: selectedRole } };
+    return {
+      success: true,
+      userData: {
+        ...(userData || {}),
+        role: roleFromClaims || userData?.role || selectedRole,
+      },
+    };
   } catch (err) {
     return {
       success: false,
