@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/rbac";
 import { withErrorHandler, parseJSON } from "@/lib/error-handler";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { AppError } from "@/lib/errors";
+import { z } from "zod";
 import { connectDb } from "@/lib/mongodb";
 import { publishNoticeToRedis } from "@/app/api/notices/stream/route";
 import { createNoticeSchema } from "@/lib/validations/notices";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // Valid roles in Learnova — used to validate targetAudience entries
-const VALID_ROLES = ["student", "teacher", "institute", "admin", "staff"] as const;
+const VALID_ROLES = ["student", "teacher", "institute", "admin", "staff"];
 
 const noticeSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -96,6 +97,13 @@ async function publishNotice(request) {
     });
   } catch (mongoError) {
     console.error("Failed to sync notice to MongoDB:", mongoError);
+  }
+
+  // Publish to Redis for SSE real-time stream
+  try {
+    await publishNoticeToRedis({ ...newNotice, _id: result.id });
+  } catch (redisError) {
+    console.error("Failed to publish notice to Redis:", redisError);
   }
 
   return NextResponse.json({
