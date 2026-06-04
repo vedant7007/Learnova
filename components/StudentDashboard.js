@@ -53,6 +53,9 @@ import BadgeGallery from "./gamification/BadgeGallery";
 import ComplaintForm from "@/components/ComplaintForm";
 import StreakTracker from "@/components/ui/StreakTracker";
 import AttendanceInsights from "@/components/AttendanceInsights";
+import ExportDropdown from "@/components/ui/ExportDropdown";
+import { exportToCSV, exportToPDF } from "@/utils/exportUtils";
+import { toast } from "react-hot-toast";
 
 const AttendanceHeatmap = dynamic(
   () => import("./AttendanceHeatmap"),
@@ -339,6 +342,34 @@ const StudentDashboard = () => {
     setShowDiagnosticQuiz(false); 
   };
 
+  const handleExportAttendance = (format) => {
+    if (!recentActivity || recentActivity.length === 0) {
+      toast.error("No attendance records to export.");
+      return;
+    }
+    const exportData = recentActivity.map((record) => ({
+      Date: record.date,
+      Time: record.timestamp ? new Date(record.timestamp).toLocaleTimeString() : "-",
+      Status: record.status.toUpperCase(),
+      Confidence: `${Math.round(record.confidenceScore * 100)}%`,
+    }));
+    const filename = `attendance_${user?.displayName || "student"}_${new Date().toISOString().split("T")[0]}`;
+    
+    if (format === "csv") {
+      exportToCSV(exportData, filename);
+      toast.success("Attendance exported to CSV");
+    } else {
+      const columns = [
+        { header: "Date", dataKey: "Date" },
+        { header: "Time", dataKey: "Time" },
+        { header: "Status", dataKey: "Status" },
+        { header: "Confidence", dataKey: "Confidence" },
+      ];
+      exportToPDF(exportData, columns, `Attendance Report: ${user?.displayName || "Student"}`, filename);
+      toast.success("Attendance exported to PDF");
+    }
+  };
+
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -385,7 +416,7 @@ const StudentDashboard = () => {
             <span className={`text-xs px-3 py-1 rounded-full font-bold uppercase ${
               skillPath === 'advanced' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
               skillPath === 'booster' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-              'bg-blue-500/20 text-blue-400 border border-white/10'
+              'bg-blue-500/20 text-blue-400 border border-white/10'f
             }`}>
               {skillPath} Sequence Active
             </span>
@@ -406,6 +437,9 @@ const StudentDashboard = () => {
 
       {/* Attendance Insights */}
       <div className="max-w-7xl mx-auto mt-6 px-6">
+        <div className="flex justify-end mb-4">
+          <ExportDropdown onExport={handleExportAttendance} />
+        </div>
         <AttendanceInsights recentActivity={recentActivity} />
       </div>
 
