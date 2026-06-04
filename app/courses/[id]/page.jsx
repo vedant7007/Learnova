@@ -291,12 +291,23 @@ export default function CourseDetailPage() {
           <div className="my-8 p-6 rounded-2xl border border-zinc-800 bg-zinc-900/30 shadow-xl">
             {/* The Video Stream */}
             <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black mb-4">
-              <video 
-                ref={videoRef}
-                src={mockVideoAIProperties.videoUrl} 
-                controls 
-                className="w-full h-full object-contain"
-              />
+              {mockVideoAIProperties.videoUrl.includes("youtube.com") || mockVideoAIProperties.videoUrl.includes("vimeo.com") || mockVideoAIProperties.videoUrl.includes("embed") ? (
+                <iframe
+                  src={mockVideoAIProperties.videoUrl}
+                  title="Course Video Stream"
+                  loading="lazy"
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <video 
+                  ref={videoRef}
+                  src={mockVideoAIProperties.videoUrl} 
+                  controls 
+                  className="w-full h-full object-contain"
+                />
+              )}
             </div>
 
             {/* Segmented AI Concept Map Progress Track */}
