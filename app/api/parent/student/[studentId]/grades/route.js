@@ -9,11 +9,46 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const SAMPLE_GRADES = [
-  { subject: "Mathematics", grade: "A", score: 92, maxScore: 100, term: "Midterm", date: "2026-03-15" },
-  { subject: "Computer Science", grade: "A+", score: 98, maxScore: 100, term: "Midterm", date: "2026-03-18" },
-  { subject: "Physics", grade: "B+", score: 87, maxScore: 100, term: "Midterm", date: "2026-03-20" },
-  { subject: "Chemistry", grade: "A-", score: 90, maxScore: 100, term: "Midterm", date: "2026-03-22" },
-  { subject: "English Literature", grade: "B", score: 78, maxScore: 100, term: "Midterm", date: "2026-03-25" },
+  {
+    subject: "Mathematics",
+    grade: "A",
+    score: 92,
+    maxScore: 100,
+    term: "Midterm",
+    date: "2026-03-15",
+  },
+  {
+    subject: "Computer Science",
+    grade: "A+",
+    score: 98,
+    maxScore: 100,
+    term: "Midterm",
+    date: "2026-03-18",
+  },
+  {
+    subject: "Physics",
+    grade: "B+",
+    score: 87,
+    maxScore: 100,
+    term: "Midterm",
+    date: "2026-03-20",
+  },
+  {
+    subject: "Chemistry",
+    grade: "A-",
+    score: 90,
+    maxScore: 100,
+    term: "Midterm",
+    date: "2026-03-22",
+  },
+  {
+    subject: "English Literature",
+    grade: "B",
+    score: 78,
+    maxScore: 100,
+    term: "Midterm",
+    date: "2026-03-25",
+  },
 ];
 
 export const GET = withErrorHandler(async (request, context) => {
@@ -28,7 +63,10 @@ export const GET = withErrorHandler(async (request, context) => {
   const linkId = `${parentId}_${studentId}`;
   const linkDoc = await db.collection("parent_student_links").doc(linkId).get();
   if (!linkDoc.exists) {
-    return jsonError("Access Denied: You are not authorized to view this student's records.", 403);
+    return jsonError(
+      "Access Denied: You are not authorized to view this student's records.",
+      403
+    );
   }
 
   // 2. Query student grades
@@ -40,32 +78,17 @@ export const GET = withErrorHandler(async (request, context) => {
   let grades = [];
 
   if (gradesQuery.empty) {
-    // Self-seed sample grades for high-fidelity presentation
-    try {
-      const mongoDb = await connectDb();
-      for (const sample of SAMPLE_GRADES) {
-        const gradeDoc = {
-          studentId,
-          ...sample,
-          createdAt: new Date().toISOString(),
-        };
-
-        const result = await db.collection("grades").add(gradeDoc);
-        const docWithId = { id: result.id, ...gradeDoc };
-        grades.push(docWithId);
-
-        // Sync to MongoDB
-        await mongoDb.collection("grades").updateOne(
-          { _id: result.id },
-          { $set: { ...gradeDoc, _id: result.id } },
-          { upsert: true }
-        );
-      }
-    } catch (seedErr) {
-      console.error("Failed to seed sample grades:", seedErr);
-      // Fallback: return mock grades without database save to prevent crash
-      grades = SAMPLE_GRADES.map((g, i) => ({ id: `mock_${i}`, studentId, ...g }));
-    }
+    // No real grades exist yet. Return sample data for display purposes only.
+    // Do NOT persist sample records to Firestore or MongoDB. Writing demo data
+    // to the production database on first access creates permanent stub records
+    // that mix with real grades on subsequent queries, producing duplicate or
+    // misleading academic data that cannot be easily cleaned up.
+    grades = SAMPLE_GRADES.map((g, i) => ({
+      id: `sample_${i}`,
+      studentId,
+      ...g,
+      isSample: true,
+    }));
   } else {
     grades = gradesQuery.docs.map((doc) => ({
       id: doc.id,
@@ -80,7 +103,10 @@ export const GET = withErrorHandler(async (request, context) => {
 });
 export const POST = withErrorHandler(async (request) => {
   // Let admins or teachers add grades
-  const { payload: decodedToken, profile } = await requireRole(request, ["admin", "teacher"]);
+  const { payload: decodedToken, profile } = await requireRole(request, [
+    "admin",
+    "teacher",
+  ]);
   const body = await parseJSON(request, 1024 * 5);
   const { studentId, subject, grade, score, maxScore, term, date } = body;
 
@@ -106,11 +132,13 @@ export const POST = withErrorHandler(async (request) => {
 
   try {
     const mongoDb = await connectDb();
-    await mongoDb.collection("grades").updateOne(
-      { _id: result.id },
-      { $set: { ...newGrade, _id: result.id } },
-      { upsert: true }
-    );
+    await mongoDb
+      .collection("grades")
+      .updateOne(
+        { _id: result.id },
+        { $set: { ...newGrade, _id: result.id } },
+        { upsert: true }
+      );
   } catch (err) {
     console.error("MongoDB grade sync failed:", err);
   }
