@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { authorizeCronRequest } from "@/lib/cronAuth";
 import { connectDb } from "@/lib/mongodb";
+import admin from "firebase-admin";
+import { initializeFirebase } from "@/lib/firebase-admin";
 import { evaluateStudentAttendance } from "@/lib/attendanceUtils";
 
 export const dynamic = "force-dynamic";
@@ -277,7 +279,6 @@ export async function GET(request) {
               to_email: email,
               to_name: name,
               attendance_percentage: evaluation.percentage,
-              threshold,
               threshold,
             });
           }
