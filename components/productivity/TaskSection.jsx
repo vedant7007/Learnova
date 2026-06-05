@@ -79,6 +79,29 @@ export function TaskSection({
         </div>
       </div>
       <div className="space-y-3">
+        {tasks.length === 0 && (
+  <div
+    className={`rounded-2xl p-8 text-center ${
+      isDark
+        ? "bg-black/40 border border-white/10"
+        : "bg-slate-50 border border-slate-200"
+    }`}
+  >
+    <div className="text-5xl mb-3">🚀</div>
+
+    <h3 className="text-xl font-semibold mb-2">
+      No Tasks Yet
+    </h3>
+
+    <p
+      className={`text-sm ${
+        isDark ? "text-slate-300" : "text-slate-600"
+      }`}
+    >
+      Create your first task and start tracking your productivity.
+    </p>
+  </div>
+)}
         {tasks.map((task, index) => (
           <div
             key={task.id}
