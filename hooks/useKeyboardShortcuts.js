@@ -16,6 +16,7 @@ function isUserTyping(target) {
  *   Ctrl/Cmd + /   -> onHelp
  *   Escape         -> onEscape
  */
+// AFTER (fixed)
 export function useKeyboardShortcuts({
   onSearch,
   onHelp,
@@ -61,7 +62,8 @@ export function useKeyboardShortcuts({
         onEscape?.();
       }
     },
-    [onSearch, onHelp, onEscape]
+    //  All 7 callbacks listed — handleKeyDown always has fresh references
+    [onSearch, onHelp, onEscape, onTheme, onHome, onLeaderboard, onNotifications]
   );
 
   useEffect(() => {
