@@ -11,6 +11,7 @@ import { useTheme } from "next-themes";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import { useTranslations } from "next-intl";
 
 import {
   Menu,
@@ -120,6 +121,7 @@ export function Navbar() {
     useNotifications();
   const { user, userProfile, signOut, isAuthenticated, loading } =
     useAuthContext();
+  const t = useTranslations("nav");
 
   const dropdownRef = useRef(null);
   const notifRef = useRef(null);
@@ -246,25 +248,25 @@ export function Navbar() {
   };
 
   const navigationItems = [
-    { href: "/", label: "Home", icon: Home },
-    { href: "/about", label: "About", icon: BookOpen },
-    { href: "/wellness", label: "Wellness", icon: HeartPulse },
-    { href: "/productivity", label: "Focus", icon: Sparkles },
-    { href: "/activity", label: "Activities", icon: Activity },
-    { href: "/complaints", label: "Complaints", icon: MessageSquareWarning },
-    { href: "/contact", label: "Contact", icon: Mail },
-    {href:"/StudyAI",label:"Study",icon:BrainCircuit}
+    { href: "/", label: t("home"), icon: Home },
+    { href: "/about", label: t("about"), icon: BookOpen },
+    { href: "/wellness", label: t("wellness"), icon: HeartPulse },
+    { href: "/productivity", label: t("focus"), icon: Sparkles },
+    { href: "/activity", label: t("activities"), icon: Activity },
+    { href: "/complaints", label: t("complaints"), icon: MessageSquareWarning },
+    { href: "/contact", label: t("contact"), icon: Mail },
+    { href: "/StudyAI", label: t("study"), icon: BrainCircuit }
   ];
 
   const userMenuItems = [
-    { href: "/profile", icon: User, label: "Profile", key: "profile" },
+    { href: "/profile", icon: User, label: t("profile"), key: "profile" },
     {
       href: getDashboardLink(),
       icon: Activity,
-      label: "Dashboard",
+      label: t("dashboard"),
       key: "dashboard",
     },
-    { href: "/settings", icon: Settings, label: "Settings", key: "settings" },
+    { href: "/settings", icon: Settings, label: t("settings"), key: "settings" },
   ].filter((item) => !(item.key === "dashboard" && item.href === "/profile"));
   const handleImageError = (e) => {
     const img = e.target;
@@ -393,7 +395,7 @@ export function Navbar() {
                 aria-label="Open search"
               >
                 <Search className="h-4 w-4 text-zinc-400" />
-                <span className="hidden md:inline text-xs">Search</span>
+                <span className="hidden md:inline text-xs">{t("search")}</span>
                 <kbd className="hidden lg:inline-flex items-center px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-900 text-zinc-400 text-[10px] rounded border border-zinc-200 dark:border-zinc-800 font-mono leading-none">
                   Ctrl K
                 </kbd>
@@ -596,7 +598,7 @@ export function Navbar() {
                             onClick={handleLogout}
                             className="w-full flex items-center px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/8 transition-colors gap-2.5"
                           >
-                            <LogOut className="h-4 w-4" /> Logout
+                            <LogOut className="h-4 w-4" /> {t("logout")}
                           </button>
                         </motion.div>
                       )}
@@ -619,7 +621,7 @@ export function Navbar() {
                     >
                       <Link href="/auth">
                         <span className="flex items-center gap-1.5">
-                          Login{" "}
+                          {t("login")}{" "}
                           <Sparkles className="h-3.5 w-3.5 text-blue-200" />
                         </span>
                       </Link>
@@ -640,7 +642,7 @@ export function Navbar() {
                     >
                       <Link href="/auth?mode=signup">
                         <span className="flex items-center gap-1.5">
-                          Sign Up{" "}
+                          {t("signup")}{" "}
                           <Sparkles className="h-3.5 w-3.5 text-blue-200" />
                         </span>
                       </Link>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import CommentSection from "@/components/CommentSection";
+import { useTranslations } from "next-intl";
 
 import {
   TrendingUp,
@@ -229,6 +230,7 @@ export default function Page() {
   const [hoveredRing, setHoveredRing] = useState(null);
   const [activeRole, setActiveRole] = useState("admins");
   const [openFaqIdx, setOpenFaqIdx] = useState(null);
+  const tHome = useTranslations("home");
 
   return (
     <>
@@ -254,10 +256,10 @@ export default function Page() {
                   textClass="text-blue-700 dark:text-blue-300"
                 />
                 <h2 className="text-4xl md:text-5xl font-bold text-black dark:text-white tracking-tight leading-tight">
-                  Measurable Academic Operational Efficiency
+                  {tHome("stats_title")}
                 </h2>
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  Hover over our structural hubs to review platform milestones. We embed robust data layers straight into modern campuses to elevate productivity and engagement metrics.
+                  {tHome("stats_desc")}
                 </p>
                 <div className="pt-4 flex flex-wrap gap-4">
                   <ActionButton href="/case-studies/impact">
@@ -384,10 +386,10 @@ export default function Page() {
                 textClass="text-purple-700 dark:text-purple-300"
               />
               <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-black dark:text-white">
-                Intelligent Frameworks Built for Modern Classrooms
+                {tHome("features_title")}
               </h2>
               <p className="text-muted-foreground">
-                Simplify complex department operations with an interconnected ecosystem built on cutting-edge design paradigms.
+                {tHome("features_desc")}
               </p>
             </Reveal>
 

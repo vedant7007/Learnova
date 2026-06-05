@@ -2,6 +2,8 @@
 import React from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
+import { NextIntlClientProvider } from "next-intl";
+import { getMessages } from "next-intl/server";
 
 // ─── Third-party libraries ───────────────────────────────────────────────────
 import { Toaster } from "react-hot-toast";
@@ -280,7 +282,8 @@ export const viewport = {
 };
 
 // ─── Root layout ──────────────────────────────────────────────────────────────
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const messages = await getMessages();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -319,6 +322,7 @@ export default function RootLayout({ children }) {
 
         {/* ── All context providers (Theme, Auth, Firestore, Notifications) ── */}
 
+        <NextIntlClientProvider messages={messages}>
         <AllProviders>
           {/* Note: Ensure these providers (ThemeProvider, AuthProvider, etc.) 
               are actually imported and exported correctly in AllProviders 
@@ -379,6 +383,7 @@ export default function RootLayout({ children }) {
             <ShortcutsModal />
           </Suspense>
         </AllProviders>
+        </NextIntlClientProvider>
 
       </body>
     </html>

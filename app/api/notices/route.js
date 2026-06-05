@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { requireRole } from "@/lib/rbac";
 import { withErrorHandler, parseJSON } from "@/lib/error-handler";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // Valid roles in Learnova — used to validate targetAudience entries
-const VALID_ROLES = ["student", "teacher", "institute", "admin", "staff"] as const;
+const VALID_ROLES = ["student", "teacher", "institute", "admin", "staff"];
 
 const noticeSchema = z.object({
   title: z.string().min(1, "Title is required"),

@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import Tooltip from "@/components/ui/Tooltip";
 
 const DEFAULT_GITHUB_OWNER = "codedbydollys10";
