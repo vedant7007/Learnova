@@ -94,6 +94,11 @@ const EngagementChart = dynamic(
   { ssr: false, loading: () => <ChartSkeleton variant="doughnut" /> }
 );
 
+const TeacherAchievementPanel = dynamic(
+  () => import("@/components/achievements/TeacherAchievementPanel"),
+  { ssr: false, loading: () => <DashboardSkeleton /> }
+);
+
 const TeacherDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -1286,6 +1291,7 @@ const TeacherDashboard = () => {
           {[
             { id: "dashboard", label: "Dashboard", icon: BarChart3 },
             { id: "curriculum", label: "Curriculum", icon: BookOpen },
+            { id: "achievements", label: "Achievements", icon: Award },
             { id: "analytics", label: "Analytics", icon: TrendingUp },
             { id: "schedule", label: "Schedule", icon: Calendar },
           ].map((tab) => (
@@ -1326,6 +1332,7 @@ const TeacherDashboard = () => {
       <div className="relative z-10 container mx-auto px-6 py-8">
         {activeTab === "dashboard" && renderDashboard()}
         {activeTab === "curriculum" && <CurriculumBuilder />}
+        {activeTab === "achievements" && <TeacherAchievementPanel />}
         {activeTab === "analytics" && renderAnalytics()}
         {activeTab === "schedule" && renderSchedule()}
       </div>
