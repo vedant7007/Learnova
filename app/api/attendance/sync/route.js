@@ -256,6 +256,11 @@ async function handleSync(request) {
                   : new Date().getHours(),
                 attendanceDate: recordDate,
               },
+            await awardXp(decodedToken.uid, "attendance_marked", {
+              attendanceHour: record.queuedAt
+                ? new Date(record.queuedAt).getHours()
+                : new Date().getHours(),
+              attendanceDate: new Date(record.queuedAt),
             });
           },
           compensate: null,
