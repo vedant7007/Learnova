@@ -21,19 +21,19 @@ vi.mock("../Navbar", () => ({
 vi.mock("@/components/ui/DashboardSkeleton", () => ({
   default: function MockDashboardSkeleton() {
     return <div>Dashboard Loading...</div>;
-  }
+  },
 }));
 
 vi.mock("@/components/ui/ChartSkeleton", () => ({
   default: function MockChartSkeleton() {
     return <div>Chart Skeleton</div>;
-  }
+  },
 }));
 
 vi.mock("@/components/ui/SkeletonCard", () => ({
   default: function MockSkeletonCard() {
     return <div>Skeleton Card</div>;
-  }
+  },
 }));
 
 vi.mock("next/dynamic", () => ({
@@ -125,14 +125,10 @@ describe("AdminDashboard", () => {
     render(<AdminDashboard />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Learnova Admin Center")
-      ).toBeInTheDocument();
+      expect(screen.getByText("Learnova Admin Center")).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByText("Super Admin Dashboard")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Super Admin Dashboard")).toBeInTheDocument();
 
     expect(
       screen.getByText("System Status: All Services Operational")
@@ -155,9 +151,7 @@ describe("AdminDashboard", () => {
     render(<AdminDashboard />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Learnova Admin Center")
-      ).toBeInTheDocument();
+      expect(screen.getByText("Learnova Admin Center")).toBeInTheDocument();
     });
 
     await user.click(
@@ -166,13 +160,9 @@ describe("AdminDashboard", () => {
       })
     );
 
-    expect(
-      screen.getByText("Institute Management")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Institute Management")).toBeInTheDocument();
 
-    expect(
-      screen.getByText("Delhi Technical University")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Delhi Technical University")).toBeInTheDocument();
   });
 
   test("switches to monitoring tab", async () => {
@@ -181,9 +171,7 @@ describe("AdminDashboard", () => {
     render(<AdminDashboard />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Learnova Admin Center")
-      ).toBeInTheDocument();
+      expect(screen.getByText("Learnova Admin Center")).toBeInTheDocument();
     });
 
     await user.click(
@@ -203,9 +191,7 @@ describe("AdminDashboard", () => {
     render(<AdminDashboard />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Learnova Admin Center")
-      ).toBeInTheDocument();
+      expect(screen.getByText("Learnova Admin Center")).toBeInTheDocument();
     });
 
     await user.click(

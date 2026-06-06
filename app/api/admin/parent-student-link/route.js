@@ -150,8 +150,15 @@ export const POST = withErrorHandler(async (request) => {
     );
   }
 
-  if (parentProfile.instituteId && studentProfile.instituteId && parentProfile.instituteId !== studentProfile.instituteId) {
-    return jsonError("Parent and student must belong to the same institute", 400);
+  if (
+    parentProfile.instituteId &&
+    studentProfile.instituteId &&
+    parentProfile.instituteId !== studentProfile.instituteId
+  ) {
+    return jsonError(
+      "Parent and student must belong to the same institute",
+      400
+    );
   }
 
   const parentId = parentProfile.uid;

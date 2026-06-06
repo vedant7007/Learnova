@@ -30,7 +30,10 @@ const syncAuthTokenCookie = async (token) => {
     },
     credentials: "same-origin",
   }).catch((error) => {
-    console.warn("[useAuth] Failed to sync auth session cookie:", error?.message);
+    console.warn(
+      "[useAuth] Failed to sync auth session cookie:",
+      error?.message
+    );
   });
 };
 
@@ -51,7 +54,10 @@ const clearAuthSessionCookie = async () => {
     },
     credentials: "same-origin",
   }).catch((error) => {
-    console.warn("[useAuth] Failed to clear auth session cookie:", error?.message);
+    console.warn(
+      "[useAuth] Failed to clear auth session cookie:",
+      error?.message
+    );
   });
 };
 
@@ -60,8 +66,17 @@ export const clearAuthSensitiveCaches = async () => {
   if (!cacheStorage) return;
   try {
     const cacheKeys = await cacheStorage.keys();
-    const sensitive = [/auth/i, /user/i, /session/i, /token/i, /profile/i, /secure/i];
-    const toDelete = cacheKeys.filter((key) => sensitive.some((p) => p.test(key)));
+    const sensitive = [
+      /auth/i,
+      /user/i,
+      /session/i,
+      /token/i,
+      /profile/i,
+      /secure/i,
+    ];
+    const toDelete = cacheKeys.filter((key) =>
+      sensitive.some((p) => p.test(key))
+    );
     await Promise.all(toDelete.map((key) => cacheStorage.delete(key)));
   } catch {
     // ignore
@@ -119,7 +134,10 @@ export const useAuth = () => {
 
       if (firebaseUser) {
         setUser(firebaseUser);
-        refreshManagerRef.current = createTokenRefreshManager(firebaseUser, handleSessionExpired);
+        refreshManagerRef.current = createTokenRefreshManager(
+          firebaseUser,
+          handleSessionExpired
+        );
         refreshManagerRef.current.start();
 
         const userDocRef = doc(db, "users", firebaseUser.uid);

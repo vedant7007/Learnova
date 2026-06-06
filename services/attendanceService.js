@@ -118,8 +118,13 @@ export async function recordAttendance({
     });
   } catch (error) {
     // If it's a network error, Workbox Background Sync has queued the request
-    if (error.message.includes("Failed to fetch") || error.name === "TypeError") {
-      console.warn("Network error during attendance submission. Workbox will sync later.");
+    if (
+      error.message.includes("Failed to fetch") ||
+      error.name === "TypeError"
+    ) {
+      console.warn(
+        "Network error during attendance submission. Workbox will sync later."
+      );
       return {
         alreadyRecorded: false,
         newRate: null,
