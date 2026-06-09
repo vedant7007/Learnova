@@ -30,6 +30,11 @@ import { useAuth } from "@/hooks/useAuth";
 
 import AchievementSection from "./AchievementSection";
 import AttendanceChart from "./AttendanceChart";
+import AchievementProgress from "./AchievementProgress";
+import {
+  showAchievementNotification,
+  showMultipleAchievementNotifications,
+} from "./AchievementNotification";
 
 import {
   weeklySchedule,
@@ -79,6 +84,10 @@ const StudentDashboard = () => {
   const [showComplaint, setShowComplaint] =
     useState(false);
 
+  const [achievements, setAchievements] = useState([]);
+  const [newBadges, setNewBadges] = useState([]);
+  const [achievementsLoading, setAchievementsLoading] = useState(false);
+
   useEffect(() => {
     const fetchGamification = async () => {
       try {
@@ -108,6 +117,52 @@ const StudentDashboard = () => {
     };
 
     fetchGamification();
+  }, [user]);
+
+  // Fetch achievements
+  useEffect(() => {
+    const fetchAchievements = async () => {
+      try {
+        if (!user) return;
+
+        setAchievementsLoading(true);
+        const token = await user.getIdToken();
+
+        const res = await fetch("/api/student/achievements", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setAchievements(data.badges || []);
+
+          // Show notifications for newly unlocked badges
+          if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
+            setNewBadges(data.newlyUnlocked);
+            showMultipleAchievementNotifications(data.newlyUnlocked, 1000);
+
+            // Save newly earned badges
+            const unlockedBadges = data.badges.filter((b) => b.unlocked);
+            await fetch("/api/student/achievements", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ badges: unlockedBadges }),
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load achievements", err);
+      } finally {
+        setAchievementsLoading(false);
+      }
+    };
+
+    fetchAchievements();
   }, [user]);
 
   // Attendance stats
@@ -389,6 +444,109 @@ const StudentDashboard = () => {
       </div>
 
       {/* MAIN CONTENT CONTINUES */}
+
+      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8 space-y-8 pb-20">
+        {/* Quick Stats Section */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatCard
+            color="green"
+            label="Present"
+            value={attendanceStats?.present || 0}
+          />
+          <StatCard
+            color="yellow"
+            label="Late"
+            value={attendanceStats?.late || 0}
+          />
+          <StatCard
+            color="red"
+            label="Absent"
+            value={attendanceStats?.absent || 0}
+          />
+          <StatCard
+            color="blue"
+            label="Attendance %"
+            value={`${attendanceStats?.percentage || 0}%`}
+          />
+        </div>
+
+        {/* Achievements Section */}
+        <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6 shadow-2xl">
+          {achievementsLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-accent"></div>
+            </div>
+          ) : achievements.length > 0 ? (
+            <AchievementProgress
+              badges={achievements}
+              newBadges={newBadges}
+              title="Your Achievements"
+              showStats={true}
+              size="default"
+            />
+          ) : (
+            <div className="text-center py-12">
+              <Target className="w-12 h-12 text-gray-500 mx-auto mb-4" />
+              <p className="text-gray-400">
+                Loading your achievements...
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Attendance Analytics */}
+        <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6 shadow-2xl">
+          <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+            <TrendingUp className="w-6 h-6 text-blue-400" />
+            Attendance Analytics
+          </h2>
+          <AttendanceAnalytics
+            userId={user?.uid}
+            recentActivity={recentActivity}
+          />
+        </div>
+
+        {/* View Toggle */}
+        <div className="flex items-center justify-center gap-4">
+          <button
+            onClick={() => setViewMode("heatmap")}
+            className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+              viewMode === "heatmap"
+                ? "bg-gradient-to-r from-accent to-blue-500 text-white shadow-lg"
+                : "bg-white/10 text-gray-300 hover:bg-white/20"
+            }`}
+          >
+            Heatmap
+          </button>
+          <button
+            onClick={() => setViewMode("calendar")}
+            className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+              viewMode === "calendar"
+                ? "bg-gradient-to-r from-accent to-blue-500 text-white shadow-lg"
+                : "bg-white/10 text-gray-300 hover:bg-white/20"
+            }`}
+          >
+            Calendar
+          </button>
+        </div>
+
+        {/* Attendance Visualization */}
+        <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6 shadow-2xl">
+          {viewMode === "heatmap" ? (
+            <AttendanceHeatmap />
+          ) : (
+            <AttendanceCalendar />
+          )}
+        </div>
+
+        {/* Gamification Section */}
+        {gamificationData && (
+          <div className="space-y-4">
+            <StreakCounter data={gamificationData} />
+            <XpProgressBar data={gamificationData} />
+          </div>
+        )}
+      </div>
 
       {/* Keep all your remaining JSX exactly same below this */}
 
