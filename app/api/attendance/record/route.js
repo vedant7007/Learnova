@@ -6,6 +6,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { AppError } from "@/lib/errors";
 import { recordAttendanceSchema, withValidation } from "@/lib/validations";
 import { AttendanceService } from "@/lib/services/attendanceService";
+import { emitWebhookEvent } from "@/lib/webhook/dispatcher";
 
 export const POST = withErrorHandler(
   withValidation(recordAttendanceSchema, async (request, validatedData, context) => {
@@ -63,6 +64,15 @@ export const POST = withErrorHandler(
       );
       return jsonError("Attendance recording failed", 502);
     }
+
+    emitWebhookEvent("attendance.recorded", {
+      studentId: userId,
+      studentName,
+      email,
+      confidence: normalizedConfidence,
+      date: normalizedDate,
+      recordedBy: token.uid,
+    });
 
     return jsonSuccess({ alreadyRecorded: false }, 201);
   })
