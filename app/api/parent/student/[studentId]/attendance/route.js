@@ -1,6 +1,6 @@
 import { jsonError, jsonSuccess } from "@/lib/api-response";
 import { withErrorHandler } from "@/lib/error-handler";
-import { requireParent } from "@/lib/rbac";
+import { requireAuth } from "@/lib/rbac";
 import { initFirebaseAdmin } from "@/lib/firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 
@@ -9,10 +9,10 @@ export const runtime = "nodejs";
 
 // Accepted studentId pattern: Firebase UIDs are 28-character alphanumeric strings.
 // Reject values that do not conform to prevent path manipulation and enumeration.
-const STUDENT_ID_RE = /^[A-Za-z0-9]{10,128}$/;
+const STUDENT_ID_RE = /^[A-Za-z0-9_-]{8,128}$/;
 
 export const GET = withErrorHandler(async (request, context) => {
-  const { payload: decodedToken } = await requireParent(request);
+  const decodedToken = await requireAuth(request);
   const parentId = decodedToken.uid;
   const { studentId } = context.params;
 
@@ -34,7 +34,10 @@ export const GET = withErrorHandler(async (request, context) => {
   const linkId = `${parentId}_${studentId}`;
   const linkDoc = await db.collection("parent_student_links").doc(linkId).get();
   if (!linkDoc.exists) {
-    return jsonError("Access Denied: You are not authorized to view this student's records.", 403);
+    return jsonError(
+      "Access Denied: You are not authorized to view this student's records.",
+      403
+    );
   }
 
   // 2. Query student attendance records
@@ -68,16 +71,24 @@ export const GET = withErrorHandler(async (request, context) => {
   // Sort records by date descending
   records.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  return jsonSuccess({
-    stats: {
-      total: presentCount + lateCount + absentCount,
-      present: presentCount,
-      late: lateCount,
-      absent: absentCount,
-      attendancePercentage: (presentCount + lateCount + absentCount) > 0
-        ? Math.round(((presentCount + lateCount) / (presentCount + lateCount + absentCount)) * 100)
-        : 0,
+  return jsonSuccess(
+    {
+      stats: {
+        total: presentCount + lateCount + absentCount,
+        present: presentCount,
+        late: lateCount,
+        absent: absentCount,
+        attendancePercentage:
+          presentCount + lateCount + absentCount > 0
+            ? Math.round(
+                ((presentCount + lateCount) /
+                  (presentCount + lateCount + absentCount)) *
+                  100
+              )
+            : 0,
+      },
+      records,
     },
-    records,
-  }, 200);
+    200
+  );
 });

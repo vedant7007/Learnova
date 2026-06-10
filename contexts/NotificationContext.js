@@ -100,19 +100,17 @@ export function NotificationProvider({ children }) {
   const markAsRead = (id) => {
     setNotifications((prev) =>
       prev.map((notification) =>
-        notification.id === id
-          ? { ...notification, read: true }
-          : notification
+        notification.id === id ? { ...notification, read: true } : notification
       )
     );
   };
 
   const markAllAsRead = () => {
     setNotifications((prev) =>
-        prev.map((notification) => ({
+      prev.map((notification) => ({
         ...notification,
         read: true,
-        }))
+      }))
     );
   };
   useEffect(() => {
