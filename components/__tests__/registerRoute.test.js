@@ -49,10 +49,13 @@ describe("POST /api/register - Authentication, Rollback, and Validation Security
     mockFindOne = vi.fn();
     mockInsertOne = vi.fn();
 
+    const mockUpdateOne = vi.fn().mockResolvedValue({ modifiedCount: 1 });
+
     connectDb.mockResolvedValue({
       collection: vi.fn().mockReturnValue({
         findOne: mockFindOne,
         insertOne: mockInsertOne,
+        updateOne: mockUpdateOne,
         createIndex: vi.fn().mockResolvedValue({}),
       }),
     });

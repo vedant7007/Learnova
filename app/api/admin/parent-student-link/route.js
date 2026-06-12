@@ -1,6 +1,6 @@
 import { jsonError, jsonSuccess } from "@/lib/api-response";
 import { withErrorHandler, parseJSON } from "@/lib/error-handler";
-import { requireAdmin } from "@/lib/rbac";
+import { requireAdmin, requireAuth } from "@/lib/rbac";
 import { initFirebaseAdmin } from "@/lib/firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { connectDb } from "@/lib/mongodb";
