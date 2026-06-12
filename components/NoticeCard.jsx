@@ -124,6 +124,10 @@ const createPdfDownload = (notice) => {
   doc.setTextColor(100, 116, 139); // Slate-500
 
   const createdAt = notice.createdAt ? new Date(notice.createdAt) : new Date();
+<<<<<<< HEAD
+  const dateStr = createdAt.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  const timeStr = createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+=======
   const dateStr = createdAt.toLocaleDateString([], {
     month: "short",
     day: "numeric",
@@ -133,6 +137,7 @@ const createPdfDownload = (notice) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+>>>>>>> upstream/master
 
   doc.text(`Author: ${notice.author || "Unknown"}`, margin, cursorY);
   doc.text(`Published: ${dateStr} at ${timeStr}`, margin + 62, cursorY);

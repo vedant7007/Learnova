@@ -41,6 +41,8 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 // ─── Context providers (all wrapped inside AllProviders) ─────────────────────
 // AllProviders composes: ThemeProvider → AuthProvider → FirestoreProvider → NotificationProvider
 import AllProviders from "./providers/AllProviders";
+import { NextIntlClientProvider } from "next-intl";
+import { getMessages } from "next-intl/server";
 
 // ─── SEO metadata & structured data ─────────────────────────────────────────
 import { siteStructuredData } from "@/lib/seo/siteStructuredData";
@@ -279,7 +281,8 @@ export const viewport = {
 };
 
 // ─── Root layout ──────────────────────────────────────────────────────────────
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const messages = await getMessages();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -313,6 +316,8 @@ export default function RootLayout({ children }) {
           Skip to Main Content
         </a>
 
+        {/* ── All context providers (Theme, Auth, Firestore, Notifications) ── */}
+        <NextIntlClientProvider messages={messages}>
         <AllProviders>
           {/* Note: Ensure these providers (ThemeProvider, AuthProvider, etc.) 
               are actually imported and exported correctly in AllProviders 
@@ -363,11 +368,11 @@ export default function RootLayout({ children }) {
             />
 
             <CommandPaletteWrapper />
-
             {/* 🚀 ADDED: System Shortcuts Modal integration layer */}
             <ShortcutsModal />
           </Suspense>
         </AllProviders>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

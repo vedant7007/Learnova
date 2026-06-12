@@ -5,7 +5,11 @@ import QuizReviewMode from "@/components/QuizReviewMode";
 import OfflineSyncTracker from "@/components/OfflineSyncTracker";
 import { useTheme } from "next-themes";
 import { translations } from "@/constants/translations";
+<<<<<<< HEAD
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+=======
 import { useState, useEffect, useRef } from "react";
+>>>>>>> upstream/master
 import Link from "next/link";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
@@ -331,6 +335,7 @@ const FAQ_ITEMS = [
 // --- Main Page Component ---
 
 export default function Page() {
+  const [hoveredRing, setHoveredRing] = useState(null);
   const [activeRole, setActiveRole] = useState("admins");
   const [openFaqIdx, setOpenFaqIdx] = useState(null);
 
