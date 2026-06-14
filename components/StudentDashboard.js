@@ -22,29 +22,32 @@ import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
 import ChartSkeleton from "@/components/ui/ChartSkeleton";
 
 import { Navbar } from "./Navbar";
+import { dashboardContentOffsetClass } from "@/components/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAttendance } from "@/hooks/useAttendance";
 import { useCurriculum } from "@/hooks/useCurriculum";
 import { useIsMounted } from "@/hooks/useIsMounted";
+import EngagementScoreCard from "@/components/EngagementScoreCard";
+import EngagementTrendChart from "@/components/EngagementTrendChart";
+import EngagementBreakdown from "@/components/EngagementBreakdown";
+import { calculateEngagementScore, getEngagementCategory } from "@/lib/engagementScore";
 
-const AchievementSection = dynamic(
-  () => import("./AchievementSection"),
-  {
-    ssr: false,
-    loading: () => <DashboardSkeleton />,
-  }
+const AchievementSection = dynamic(() => import("./AchievementSection"), {
+  ssr: false,
+  loading: () => <DashboardSkeleton />,
+});
+
+const StudentAchievementsPanel = dynamic(
+  () => import("./achievements/StudentAchievementsPanel"),
+  { ssr: false, loading: () => <DashboardSkeleton /> }
 );
 
-const AttendanceChart = dynamic(
-  () => import("./AttendanceChart"),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton />,
-  }
-);
+const AttendanceChart = dynamic(() => import("./AttendanceChart"), {
+  ssr: false,
+  loading: () => <ChartSkeleton />,
+});
 
 import { weeklySchedule } from "@/constants/mockData";
-
 import AttendanceAnalytics from "./dashboard/AttendanceAnalytics";
 import StreakCounter from "./gamification/StreakCounter";
 import XpProgressBar from "./gamification/XpProgressBar";
@@ -53,22 +56,19 @@ import BadgeGallery from "./gamification/BadgeGallery";
 import ComplaintForm from "@/components/ComplaintForm";
 import StreakTracker from "@/components/ui/StreakTracker";
 import AttendanceInsights from "@/components/AttendanceInsights";
+import ExportDropdown from "@/components/ui/ExportDropdown";
+import { exportToCSV, exportToPDF } from "@/utils/exportUtils";
+import { toast } from "react-hot-toast";
 
-const AttendanceHeatmap = dynamic(
-  () => import("./AttendanceHeatmap"),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton variant="heatmap" />,
-  }
-);
+const AttendanceHeatmap = dynamic(() => import("./AttendanceHeatmap"), {
+  ssr: false,
+  loading: () => <ChartSkeleton variant="heatmap" />,
+});
 
-const AttendanceCalendar = dynamic(
-  () => import("./AttendanceCalendar"),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton variant="heatmap" />,
-  }
-);
+const AttendanceCalendar = dynamic(() => import("./AttendanceCalendar"), {
+  ssr: false,
+  loading: () => <ChartSkeleton variant="heatmap" />,
+});
 
 const DAY_NAMES = [
   "Sunday",
@@ -83,6 +83,8 @@ const DAY_NAMES = [
 const ATTENDANCE_WINDOW_START_HOUR = 9;
 const ATTENDANCE_WINDOW_END_MINUTE = 10;
 
+// ── Utility Functions ──────────────────────────────────────────────────────
+
 const getUserInitials = (user) => {
   if (!user?.displayName && !user?.email) {
     return "U";
@@ -93,7 +95,9 @@ const getUserInitials = (user) => {
       ?.split(" ")
       .map((name) => name[0])
       .join("")
-      .toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"
+      .toUpperCase() ||
+    user?.email?.[0]?.toUpperCase() ||
+    "U"
   );
 };
 
@@ -143,6 +147,8 @@ const getTodaySchedule = (now, schedule = weeklySchedule) => {
 const getScheduleTickKey = (now) =>
   `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}`;
 
+// ── Components ─────────────────────────────────────────────────────────────
+
 const DashboardError = ({ error, onRetry }) => (
   <div className="min-h-screen bg-background flex items-center justify-center p-4">
     <div className="text-center max-w-sm">
@@ -180,7 +186,9 @@ const DashboardHeader = ({ user, currentTime, getInitials }) => (
             />
           ) : (
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent to-blue-500 flex items-center justify-center">
-              <span className="text-sm font-bold text-white">{getInitials(user)}</span>
+              <span className="text-sm font-bold text-white">
+                {getInitials(user)}
+              </span>
             </div>
           )}
 
@@ -196,7 +204,9 @@ const DashboardHeader = ({ user, currentTime, getInitials }) => (
             <StreakTracker />
           </div>
 
-          <div className="text-sm text-muted-foreground">{user?.email || "No email"}</div>
+          <div className="text-sm text-muted-foreground">
+            {user?.email || "No email"}
+          </div>
         </div>
       </div>
 
@@ -220,10 +230,36 @@ const DashboardHeader = ({ user, currentTime, getInitials }) => (
   </div>
 );
 
+const StatCard = ({ color, label, value }) => {
+  const styles = {
+    green:
+      "from-green-500/20 to-green-600/20 border-green-500/30 text-green-400",
+    red: "from-red-500/20 to-red-600/20 border-red-500/30 text-red-400",
+    yellow:
+      "from-yellow-500/20 to-yellow-600/20 border-yellow-500/30 text-yellow-400",
+    blue: "from-blue-500/20 to-blue-600/20 border-blue-500/30 text-blue-400",
+  };
+
+  return (
+    <div
+      className={`bg-gradient-to-r ${styles[color]} border rounded-xl p-3 sm:p-4`}
+    >
+      <div className="text-[10px] sm:text-sm opacity-80">{label}</div>
+
+      <div className="text-base sm:text-xl font-bold">{value}</div>
+    </div>
+  );
+};
+
+// ── Main Component ─────────────────────────────────────────────────────────
+
 const StudentDashboard = () => {
   const { user } = useAuth();
 
-  const { recentActivity, gamificationData } = useAttendance({ role: "student", user });
+  const { recentActivity, gamificationData } = useAttendance({
+    role: "student",
+    user,
+  });
   const { curriculum } = useCurriculum({ role: "student", user });
   const isMounted = useIsMounted();
 
@@ -234,8 +270,47 @@ const StudentDashboard = () => {
 
   const [viewMode, setViewMode] = useState("heatmap");
   const [showComplaint, setShowComplaint] = useState(false);
+  const [skillPath, setSkillPath] = useState("standard");
+  const [showDiagnosticQuiz, setShowDiagnosticQuiz] = useState(false);
+  const [engagementHistory, setEngagementHistory] = useState([]);
+  const [engagementRecord, setEngagementRecord] = useState(null);
+  const [engagementError, setEngagementError] = useState(null);
+  const [engagementSaved, setEngagementSaved] = useState(false);
   const lastScheduleTickRef = useRef(getScheduleTickKey(new Date()));
 
+  const [goal, setGoal] = useState("");
+  const [level, setLevel] = useState("Beginner");
+  const [roadmap, setRoadmap] = useState([]);
+  useEffect(() => {
+    const fetchGamification = async () => {
+      try {
+        if (!user) return;
+
+        const token = await user.getIdToken();
+
+        const res = await fetch(
+          "/api/student/gamification",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          setGamificationData(data);
+        }
+      } catch (err) {
+        console.error(
+          "Failed to load gamification data",
+          err
+        );
+      }
+    };
+
+    fetchGamification();
+  }, [user]);
   const attendanceStats = useMemo(() => {
     const counts = recentActivity.reduce(
       (acc, curr) => {
@@ -254,18 +329,11 @@ const StudentDashboard = () => {
       }
     );
 
-    const total =
-      counts.present +
-      counts.absent +
-      counts.late;
+    const total = counts.present + counts.absent + counts.late;
 
     const percentage =
       total > 0
-        ? Math.round(
-            ((counts.present + counts.late) /
-              total) *
-              100
-          )
+        ? Math.round(((counts.present + counts.late) / total) * 100)
         : 0;
 
     return {
@@ -277,12 +345,44 @@ const StudentDashboard = () => {
 
   const attendancePerformance = useMemo(() => {
     return {
-      attendancePercentage:
-        attendanceStats?.percentage ?? 0,
-      streakDays:
-        gamificationData?.currentStreak ?? 0,
+      attendancePercentage: attendanceStats?.percentage ?? 0,
+      streakDays: gamificationData?.currentStreak ?? 0,
     };
   }, [attendanceStats, gamificationData]);
+
+  const activityParticipationScore = useMemo(() => {
+    return Math.min(100, Math.round((recentActivity.length / 10) * 100));
+  }, [recentActivity.length]);
+
+  const assignmentSubmissionScore = useMemo(() => {
+    return Math.min(
+      100,
+      Math.round(
+        (recentActivity.filter((item) => item?.status === "present").length /
+          8) *
+          100
+      )
+    );
+  }, [recentActivity]);
+
+  const academicPerformanceScore = useMemo(() => {
+    const totalXp = gamificationData?.totalXp ?? 0;
+    return Math.min(100, Math.round((totalXp / 1200) * 100));
+  }, [gamificationData]);
+
+  const engagementMetrics = useMemo(() => {
+    return calculateEngagementScore({
+      attendanceScore: attendanceStats?.percentage ?? 0,
+      activityScore: activityParticipationScore,
+      assignmentScore: assignmentSubmissionScore,
+      academicScore: academicPerformanceScore,
+    });
+  }, [
+    attendanceStats?.percentage,
+    activityParticipationScore,
+    assignmentSubmissionScore,
+    academicPerformanceScore,
+  ]);
 
   const scheduleState = useMemo(
     () => getTodaySchedule(scheduleTime, weeklySchedule),
@@ -293,6 +393,76 @@ const StudentDashboard = () => {
   const upcomingClass = scheduleState.upcomingClass;
   const isAttendanceWindow = scheduleState.isAttendanceWindow;
 
+  // ── Effects ────────────────────────────────────────────────────────────
+
+  // Fetch engagement history
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const controller = new AbortController();
+
+    const fetchEngagement = async () => {
+      try {
+        setEngagementError(null);
+        const token = await user.getIdToken();
+        const response = await fetch(
+          `/api/engagement-scores?studentId=${encodeURIComponent(user.uid)}&limit=12`,
+          {
+            signal: controller.signal,
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (!response.ok) {
+          throw new Error(`Unable to load engagement data: ${response.status}`);
+        }
+        const payload = await response.json();
+        setEngagementHistory(payload?.data?.history || []);
+        setEngagementRecord(payload?.data?.latest || null);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setEngagementError(err.message);
+        }
+      }
+    };
+
+    fetchEngagement();
+
+    return () => controller.abort();
+  }, [user?.uid]);
+
+  // Persist engagement metrics
+  useEffect(() => {
+    if (!user?.uid || engagementSaved || !engagementMetrics) return;
+
+    const persistEngagement = async () => {
+      try {
+        const token = await user.getIdToken();
+        await fetch("/api/engagement-scores", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            studentId: user.uid,
+            attendanceScore: engagementMetrics.attendanceScore,
+            activityScore: engagementMetrics.activityScore,
+            assignmentScore: engagementMetrics.assignmentScore,
+            academicScore: engagementMetrics.academicScore,
+          }),
+        });
+        setEngagementSaved(true);
+      } catch {
+        // Do not block dashboard if persistence fails.
+      }
+    };
+
+    persistEngagement();
+  }, [user?.uid, engagementMetrics, engagementSaved]);
+
+  // Dashboard update loop
   useEffect(() => {
     const loadingTimer = setTimeout(() => {
       if (isMounted()) setLoading(false);
@@ -315,42 +485,109 @@ const StudentDashboard = () => {
 
     updateDashboard();
 
-    const timer = setInterval(
-      updateDashboard,
-      1000
-    );
+    const timer = setInterval(updateDashboard, 1000);
 
     return () => {
       clearInterval(timer);
       clearTimeout(loadingTimer);
     };
-  }, []);
+  }, [isMounted]);
 
   const handleEvaluateQuiz = (scoreOutOfFive) => {
     const percentage = (scoreOutOfFive / 5) * 100;
 
     if (percentage >= 80) {
-      setSkillPath("advanced"); 
+      setSkillPath("advanced");
     } else if (percentage <= 40) {
-      setSkillPath("booster");  
+      setSkillPath("booster");
     } else {
-      setSkillPath("standard"); 
+      setSkillPath("standard");
     }
-    setShowDiagnosticQuiz(false); 
+    setShowDiagnosticQuiz(false);
   };
+const generateRoadmap = () => {
+  const ROADMAPS = {
+    "Web Development": {
+      Beginner: ["HTML", "CSS", "JavaScript", "React", "Node.js"],
+    },
+    "Data Science": {
+      Beginner: [
+        "Python",
+        "NumPy",
+        "Pandas",
+        "Data Visualization",
+        "Machine Learning",
+      ],
+    },
+    "Artificial Intelligence": {
+      Beginner: [
+        "Python",
+        "Math Basics",
+        "Machine Learning",
+        "Deep Learning",
+        "LLMs",
+      ],
+    },
+  };
+
+  if (!goal) return;
+
+  setRoadmap(ROADMAPS[goal]?.[level] || []);
+};
+
+  const handleExportAttendance = (format) => {
+    if (!recentActivity || recentActivity.length === 0) {
+      toast.error("No attendance records to export.");
+      return;
+    }
+    const exportData = recentActivity.map((record) => ({
+      Date: record.date,
+      Time: record.timestamp
+        ? new Date(record.timestamp).toLocaleTimeString()
+        : "-",
+      Status: record.status.toUpperCase(),
+      Confidence: `${Math.round(record.confidenceScore * 100)}%`,
+    }));
+    const filename = `attendance_${user?.displayName || "student"}_${new Date().toISOString().split("T")[0]}`;
+
+    if (format === "csv") {
+      exportToCSV(exportData, filename);
+      toast.success("Attendance exported to CSV");
+    } else {
+      const columns = [
+        { header: "Date", dataKey: "Date" },
+        { header: "Time", dataKey: "Time" },
+        { header: "Status", dataKey: "Status" },
+        { header: "Confidence", dataKey: "Confidence" },
+      ];
+      exportToPDF(
+        exportData,
+        columns,
+        `Attendance Report: ${user?.displayName || "Student"}`,
+        filename
+      );
+      toast.success("Attendance exported to PDF");
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────
 
   if (loading) {
     return <DashboardSkeleton />;
   }
 
   if (error) {
-    return <DashboardError error={error} onRetry={() => window.location.reload()} />;
+    return (
+      <DashboardError error={error} onRetry={() => window.location.reload()} />
+    );
   }
 
   return (
-    <div className="min-h-screen bg-background relative overflow-x-hidden">
+    <div
+      className={`min-h-screen bg-background relative overflow-x-hidden ${dashboardContentOffsetClass}`}
+    >
       <Navbar />
-      
+
       {/* Diagnostic Quiz Section */}
       {showDiagnosticQuiz ? (
         <div className="max-w-7xl mx-auto mt-6 px-6 relative z-20">
@@ -360,17 +597,18 @@ const StudentDashboard = () => {
               <h3 className="text-lg font-bold">Dynamic Module Evaluation</h3>
             </div>
             <p className="text-sm text-gray-400 mb-4">
-              Choose an option below to test how the layout alters itself seamlessly depending on student skill level.
+              Choose an option below to test how the layout alters itself
+              seamlessly depending on student skill level.
             </p>
             <div className="flex gap-3">
-              <button 
-                onClick={() => handleEvaluateQuiz(5)} 
+              <button
+                onClick={() => handleEvaluateQuiz(5)}
                 className="bg-green-500/20 hover:bg-green-500/40 text-green-400 border border-green-500/30 px-4 py-2 rounded-xl text-xs font-semibold transition"
               >
                 Simulate Advanced Track (Skip Basics)
               </button>
-              <button 
-                onClick={() => handleEvaluateQuiz(2)} 
+              <button
+                onClick={() => handleEvaluateQuiz(2)}
                 className="bg-yellow-500/20 hover:bg-yellow-500/40 text-yellow-400 border border-yellow-500/30 px-4 py-2 rounded-xl text-xs font-semibold transition"
               >
                 Simulate Booster Track (Add Helpers)
@@ -381,12 +619,18 @@ const StudentDashboard = () => {
       ) : (
         <div className="max-w-7xl mx-auto mt-6 px-6 relative z-20">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between">
-            <span className="text-sm text-gray-400">Current Adaptive Layout Sequence:</span>
-            <span className={`text-xs px-3 py-1 rounded-full font-bold uppercase ${
-              skillPath === 'advanced' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
-              skillPath === 'booster' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-              'bg-blue-500/20 text-blue-400 border border-white/10'
-            }`}>
+            <span className="text-sm text-gray-400">
+              Current Adaptive Layout Sequence:
+            </span>
+            <span
+              className={`text-xs px-3 py-1 rounded-full font-bold uppercase ${
+                skillPath === "advanced"
+                  ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                  : skillPath === "booster"
+                    ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                    : "bg-blue-500/20 text-blue-400 border border-white/10"
+              }`}
+            >
               {skillPath} Sequence Active
             </span>
           </div>
@@ -403,18 +647,112 @@ const StudentDashboard = () => {
           />
         </div>
       </div>
+      <div className="mt-6 bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+  <h2 className="text-xl font-bold text-white mb-4">
+    AI Learning Roadmap Generator
+  </h2>
+
+  <div className="flex flex-wrap gap-4 mb-4">
+    <select
+      value={goal}
+      onChange={(e) => setGoal(e.target.value)}
+      className="px-4 py-2 rounded-lg bg-black/40 text-white border border-white/20"
+    >
+      <option value="">Select Goal</option>
+      <option value="Web Development">Web Development</option>
+      <option value="Data Science">Data Science</option>
+      <option value="Artificial Intelligence">Artificial Intelligence</option>
+    </select>
+
+    <select
+      value={level}
+      onChange={(e) => setLevel(e.target.value)}
+      className="px-4 py-2 rounded-lg bg-black/40 text-white border border-white/20"
+    >
+      <option value="Beginner">Beginner</option>
+      <option value="Intermediate">Intermediate</option>
+      <option value="Advanced">Advanced</option>
+    </select>
+
+    <button
+      onClick={generateRoadmap}
+      className="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white"
+    >
+      Generate Roadmap
+    </button>
+  </div>
+
+  {roadmap.length > 0 && (
+    <div className="space-y-2">
+      {roadmap.map((item, index) => (
+        <div
+          key={index}
+          className="p-3 rounded-lg bg-white/5 border border-white/10 text-white"
+        >
+          Phase {index + 1}: {item}
+        </div>
+      ))}
+    </div>
+  )}
+</div>
 
       {/* Attendance Insights */}
       <div className="max-w-7xl mx-auto mt-6 px-6">
+        <div className="flex justify-end mb-4">
+          <ExportDropdown onExport={handleExportAttendance} />
+        </div>
         <AttendanceInsights recentActivity={recentActivity} />
+      </div>
+
+      {/* Engagement Score Section */}
+      <div className="max-w-7xl mx-auto mt-8 px-6">
+        <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <EngagementScoreCard
+            overallScore={engagementMetrics.overallScore}
+            attendanceScore={engagementMetrics.attendanceScore}
+            activityScore={engagementMetrics.activityScore}
+            assignmentScore={engagementMetrics.assignmentScore}
+            academicScore={engagementMetrics.academicScore}
+          />
+          <div className="space-y-6">
+            <EngagementTrendChart history={engagementHistory} />
+            <EngagementBreakdown
+              breakdown={[
+                { label: "Attendance", value: engagementMetrics.attendanceScore },
+                {
+                  label: "Activity Participation",
+                  value: engagementMetrics.activityScore,
+                },
+                {
+                  label: "Assignment Submissions",
+                  value: engagementMetrics.assignmentScore,
+                },
+                {
+                  label: "Academic Performance",
+                  value: engagementMetrics.academicScore,
+                },
+              ]}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Digital Certificates & Achievements */}
+      <div className="max-w-7xl mx-auto mt-8 px-6">
+        <StudentAchievementsPanel />
       </div>
 
       {/* Adaptive Content Sections */}
       {skillPath === "advanced" && (
         <div className="max-w-7xl mx-auto mt-6 px-6">
           <div className="p-5 bg-purple-500/10 border border-purple-500/20 rounded-xl">
-            <h4 className="text-purple-400 font-bold text-sm mb-1">🚀 Fast-Track Projects Unlocked</h4>
-            <p className="text-xs text-gray-400">The layout has automatically removed foundational reading sequences. Enjoy your high-level coding challenges!</p>
+            <h4 className="text-purple-400 font-bold text-sm mb-1">
+              🚀 Fast-Track Projects Unlocked
+            </h4>
+            <p className="text-xs text-gray-400">
+              The layout has automatically removed foundational reading
+              sequences. Enjoy your high-level coding challenges!
+            </p>
           </div>
         </div>
       )}
@@ -422,8 +760,13 @@ const StudentDashboard = () => {
       {skillPath === "booster" && (
         <div className="max-w-7xl mx-auto mt-6 px-6">
           <div className="p-5 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
-            <h4 className="text-yellow-400 font-bold text-sm mb-1">💡 Supplemental Booster Modules Active</h4>
-            <p className="text-xs text-gray-400">We have populated extra summary workflows and alternative video references to assist you with core terms.</p>
+            <h4 className="text-yellow-400 font-bold text-sm mb-1">
+              💡 Supplemental Booster Modules Active
+            </h4>
+            <p className="text-xs text-gray-400">
+              We have populated extra summary workflows and alternative video
+              references to assist you with core terms.
+            </p>
           </div>
         </div>
       )}
@@ -435,25 +778,19 @@ const StatCard = ({ color, label, value }) => {
   const styles = {
     green:
       "from-green-500/20 to-green-600/20 border-green-500/30 text-green-400",
-    red:
-      "from-red-500/20 to-red-600/20 border-red-500/30 text-red-400",
+    red: "from-red-500/20 to-red-600/20 border-red-500/30 text-red-400",
     yellow:
       "from-yellow-500/20 to-yellow-600/20 border-yellow-500/30 text-yellow-400",
-    blue:
-      "from-blue-500/20 to-blue-600/20 border-blue-500/30 text-blue-400",
+    blue: "from-blue-500/20 to-blue-600/20 border-blue-500/30 text-blue-400",
   };
 
   return (
     <div
       className={`bg-gradient-to-r ${styles[color]} border rounded-xl p-3 sm:p-4`}
     >
-      <div className="text-[10px] sm:text-sm opacity-80">
-        {label}
-      </div>
+      <div className="text-[10px] sm:text-sm opacity-80">{label}</div>
 
-      <div className="text-base sm:text-xl font-bold">
-        {value}
-      </div>
+      <div className="text-base sm:text-xl font-bold">{value}</div>
     </div>
   );
 };
