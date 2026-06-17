@@ -15,11 +15,19 @@ export default function WaterTracker() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const saved = safeLocalStorageGet(
-      "learnova-wellness-water",
-      DEFAULT_WATER_GLASSES
-    );
-    setGlasses(normalizeWaterGlasses(saved, DEFAULT_WATER_GLASSES, goal));
+    const savedDate = safeLocalStorageGet("learnova-wellness-water-date", "");
+    const today = new Date().toLocaleDateString();
+    if (savedDate !== today) {
+      safeLocalStorageSet("learnova-wellness-water", DEFAULT_WATER_GLASSES);
+      safeLocalStorageSet("learnova-wellness-water-date", today);
+      setGlasses(DEFAULT_WATER_GLASSES);
+    } else {
+      const saved = safeLocalStorageGet(
+        "learnova-wellness-water",
+        DEFAULT_WATER_GLASSES
+      );
+      setGlasses(normalizeWaterGlasses(saved, DEFAULT_WATER_GLASSES, goal));
+    }
   }, [goal]);
 
   useEffect(() => {
