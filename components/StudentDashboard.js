@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 
@@ -9,15 +9,11 @@ import {
   Clock,
   MapPin,
   Camera,
-  CheckCircle,
   Shield,
-  Smartphone,
   TrendingUp,
   Target,
   Award,
   RefreshCw,
-  Download,
-  Star,
   Sparkles,
   AlertTriangle,
 } from "lucide-react";
@@ -26,77 +22,355 @@ import DashboardSkeleton from "@/components/ui/DashboardSkeleton";
 import ChartSkeleton from "@/components/ui/ChartSkeleton";
 
 import { Navbar } from "./Navbar";
+import { dashboardContentOffsetClass } from "@/components/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useAttendance } from "@/hooks/useAttendance";
+import { useCurriculum } from "@/hooks/useCurriculum";
+import { useIsMounted } from "@/hooks/useIsMounted";
+import EngagementScoreCard from "@/components/EngagementScoreCard";
+import EngagementTrendChart from "@/components/EngagementTrendChart";
+import EngagementBreakdown from "@/components/EngagementBreakdown";
+import { calculateEngagementScore, getEngagementCategory } from "@/lib/engagementScore";
 
-import AchievementSection from "./AchievementSection";
-import AttendanceChart from "./AttendanceChart";
+const AchievementSection = dynamic(() => import("./AchievementSection"), {
+  ssr: false,
+  loading: () => <DashboardSkeleton />,
+});
 
-import {
-  weeklySchedule,
-} from "@/constants/mockData";
-import { getUserActivities } from "@/services/activityService";
-
-const AttendanceHeatmap = dynamic(
-  () => import("./AttendanceHeatmap"),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton variant="heatmap" />,
-  }
+const StudentAchievementsPanel = dynamic(
+  () => import("./achievements/StudentAchievementsPanel"),
+  { ssr: false, loading: () => <DashboardSkeleton /> }
 );
 
-const AttendanceCalendar = dynamic(
-  () => import("./AttendanceCalendar"),
-  {
-    ssr: false,
-    loading: () => <ChartSkeleton variant="heatmap" />,
-  }
-);
+const AttendanceChart = dynamic(() => import("./AttendanceChart"), {
+  ssr: false,
+  loading: () => <ChartSkeleton />,
+});
 
+import { weeklySchedule } from "@/constants/mockData";
 import AttendanceAnalytics from "./dashboard/AttendanceAnalytics";
 import StreakCounter from "./gamification/StreakCounter";
 import XpProgressBar from "./gamification/XpProgressBar";
 import BadgeGallery from "./gamification/BadgeGallery";
+
 import ComplaintForm from "@/components/ComplaintForm";
+import StreakTracker from "@/components/ui/StreakTracker";
+import AttendanceInsights from "@/components/AttendanceInsights";
+import ExportDropdown from "@/components/ui/ExportDropdown";
+import { exportToCSV, exportToPDF } from "@/utils/exportUtils";
+import { toast } from "react-hot-toast";
+import QuickNotes from "@/components/productivity/QuickNotes";
+
+const AttendanceHeatmap = dynamic(() => import("./AttendanceHeatmap"), {
+  ssr: false,
+  loading: () => <ChartSkeleton variant="heatmap" />,
+});
+
+const AttendanceCalendar = dynamic(() => import("./AttendanceCalendar"), {
+  ssr: false,
+  loading: () => <ChartSkeleton variant="heatmap" />,
+});
+
+const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+const ATTENDANCE_WINDOW_START_HOUR = 9;
+const ATTENDANCE_WINDOW_END_MINUTE = 10;
+
+// ── Utility Functions ──────────────────────────────────────────────────────
+
+const getUserInitials = (user) => {
+  if (!user?.displayName && !user?.email) {
+    return "U";
+  }
+
+  return (
+    user?.displayName
+      ?.split(" ")
+      .map((name) => name[0])
+      .join("")
+      .toUpperCase() ||
+    user?.email?.[0]?.toUpperCase() ||
+    "U"
+  );
+};
+
+const getDayName = (dayIndex) => DAY_NAMES[dayIndex] || DAY_NAMES[0];
+
+const isWeekday = (dayIndex) => dayIndex >= 1 && dayIndex <= 5;
+
+const parseClassStartTime = (time = "") => {
+  const [startTime = "00:00"] = String(time).split("-");
+  const [hour = "0", minute = "0"] = startTime.split(":");
+
+  return {
+    hour: Number(hour),
+    minute: Number(minute),
+  };
+};
+
+const getUpcomingClass = (classes, now) => {
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  return (
+    classes.find((cls) => {
+      const startTime = parseClassStartTime(cls?.time);
+      const classStartMinutes = startTime.hour * 60 + startTime.minute;
+
+      return classStartMinutes > currentMinutes;
+    }) || null
+  );
+};
+
+const getTodaySchedule = (now, schedule = weeklySchedule) => {
+  const dayIndex = now.getDay();
+  const dayName = getDayName(dayIndex);
+  const classes = schedule[dayName] || [];
+
+  return {
+    dayName,
+    classes,
+    upcomingClass: getUpcomingClass(classes, now),
+    isAttendanceWindow:
+      isWeekday(dayIndex) &&
+      now.getHours() === ATTENDANCE_WINDOW_START_HOUR &&
+      now.getMinutes() <= ATTENDANCE_WINDOW_END_MINUTE,
+  };
+};
+
+const getScheduleTickKey = (now) =>
+  `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}`;
+
+// ── Components ─────────────────────────────────────────────────────────────
+
+const DashboardError = ({ error, onRetry }) => (
+  <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="text-center max-w-sm">
+      <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+        <AlertTriangle className="w-8 h-8 text-red-400" />
+      </div>
+
+      <h2 className="text-xl font-bold mb-2">Error Loading Dashboard</h2>
+
+      <p className="text-muted-foreground text-sm mb-6">{error}</p>
+
+      <button
+        onClick={onRetry}
+        className="w-full bg-gradient-to-r from-green-500 to-blue-500 py-3 rounded-xl font-bold text-white"
+      >
+        <RefreshCw className="w-4 h-4 mr-2 inline" />
+        Retry
+      </button>
+    </div>
+  </div>
+);
+
+const DashboardHeader = ({ user, currentTime, getInitials }) => (
+  <div className="bg-card/40 backdrop-blur-xl rounded-2xl border border-border p-4 sm:p-6 shadow-xl">
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex items-center gap-4">
+        <div className="relative flex-shrink-0">
+          {user?.photoURL ? (
+            <Image
+              src={user.photoURL}
+              alt="Profile"
+              width={48}
+              height={48}
+              className="w-12 h-12 rounded-xl object-cover border border-accent/30"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent to-blue-500 flex items-center justify-center">
+              <span className="text-sm font-bold text-white">
+                {getInitials(user)}
+              </span>
+            </div>
+          )}
+
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-background" />
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-lg sm:text-2xl font-bold">
+              {user?.displayName || user?.email?.split("@")[0] || "Student"}
+            </h1>
+
+            <StreakTracker />
+          </div>
+
+          <div className="text-sm text-muted-foreground">
+            {user?.email || "No email"}
+          </div>
+        </div>
+      </div>
+
+      <div className="text-left md:text-right">
+        <div className="text-lg sm:text-xl font-mono">
+          {currentTime?.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </div>
+
+        <div className="text-xs text-muted-foreground">
+          {currentTime?.toLocaleDateString([], {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+          })}
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const StatCard = ({ color, label, value }) => {
+  const styles = {
+    green:
+      "from-green-500/20 to-green-600/20 border-green-500/30 text-green-400",
+    red: "from-red-500/20 to-red-600/20 border-red-500/30 text-red-400",
+    yellow:
+      "from-yellow-500/20 to-yellow-600/20 border-yellow-500/30 text-yellow-400",
+    blue: "from-blue-500/20 to-blue-600/20 border-blue-500/30 text-blue-400",
+  };
+
+  return (
+    <div
+      className={`bg-gradient-to-r ${styles[color]} border rounded-xl p-3 sm:p-4`}
+    >
+      <div className="text-[10px] sm:text-sm opacity-80">{label}</div>
+
+      <div className="text-base sm:text-xl font-bold">{value}</div>
+    </div>
+  );
+};
+
+// ── Main Component ─────────────────────────────────────────────────────────
 
 const StudentDashboard = () => {
   const { user } = useAuth();
 
+  const { recentActivity, gamificationData } = useAttendance({
+    role: "student",
+    user,
+  });
+  const { curriculum } = useCurriculum({ role: "student", user });
+  const isMounted = useIsMounted();
+
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [scheduleTime, setScheduleTime] = useState(new Date());
   const [error, setError] = useState(null);
 
-  const [todayClasses, setTodayClasses] = useState([]);
-  const [recentActivity, setRecentActivity] = useState([]);
-  const [upcomingClass, setUpcomingClass] = useState(null);
-  const [isAttendanceWindow, setIsAttendanceWindow] =
-    useState(false);
-
-  const [gamificationData, setGamificationData] =
-    useState(null);
-
   const [viewMode, setViewMode] = useState("heatmap");
+  const [showComplaint, setShowComplaint] = useState(false);
+  const [skillPath, setSkillPath] = useState("standard");
+  const [showDiagnosticQuiz, setShowDiagnosticQuiz] = useState(false);
+  const [engagementHistory, setEngagementHistory] = useState([]);
+  const [engagementRecord, setEngagementRecord] = useState(null);
+  const [engagementError, setEngagementError] = useState(null);
+  const [engagementSaved, setEngagementSaved] = useState(false);
+  const lastScheduleTickRef = useRef(getScheduleTickKey(new Date()));
 
-  const [showComplaint, setShowComplaint] =
-    useState(false);
+  const [goal, setGoal] = useState("");
+  const [level, setLevel] = useState("Beginner");
+  const [roadmap, setRoadmap] = useState([]);
+  const [studyGroups] = useState([
+  {
+    name: "Web Development Group",
+    subject: "Web Development",
+    members: 15,
+  },
+  {
+    name: "Data Science Circle",
+    subject: "Data Science",
+    members: 10,
+  },
+  {
+    name: "AI Learners Hub",
+    subject: "Artificial Intelligence",
+    members: 12,
+  },
+]);
 
-    useEffect(() => {
-    const fetchActivity = async () => {
-      try {
-        if (!user?.uid) return;
-        const activities = await getUserActivities(user.uid);
-        const mapped = activities.map(a => ({
-         subject: a.title,
-          date: a.timestamp?.toLocaleDateString() || "",
-          status: a.progress >= 100 ? "present" : "late",
-          }));
-setRecentActivity(mapped);
-      } catch (err) {
-        console.error("Failed to load activity", err);
-      }
-    };
+const [events] = useState([
+  {
+    title: "Mathematics Class",
+    date: "10 June",
+    type: "Class",
+    color: "text-blue-400",
+  },
+  {
+    title: "Physics Assignment",
+    date: "12 June",
+    type: "Assignment",
+    color: "text-yellow-400",
+  },
+  {
+    title: "Mid-Term Examination",
+    date: "20 June",
+    type: "Exam",
+    color: "text-red-400",
+  },
+  {
+    title: "Summer Holiday",
+    date: "25 June",
+    type: "Holiday",
+    color: "text-green-400",
+  },
+]);
 
-    fetchActivity();
-  }, [user]);
+const [performanceData] = useState([
+  {
+    subject: "Mathematics",
+    currentScore: 88,
+    previousScore: 80,
+  },
+  {
+    subject: "Science",
+    currentScore: 92,
+    previousScore: 85,
+  },
+  {
+    subject: "Programming",
+    currentScore: 95,
+    previousScore: 90,
+  },
+]);
+
+const [teacherFeedback] = useState([
+  {
+    subject: "Mathematics",
+    teacher: "Mr. Sharma",
+    rating: "⭐⭐⭐⭐⭐",
+    comment: "Excellent understanding of concepts and problem solving.",
+    recommendation: "Try advanced mathematical challenges.",
+    status: "Acknowledged",
+  },
+  {
+    subject: "Science",
+    teacher: "Mrs. Patel",
+    rating: "⭐⭐⭐⭐",
+    comment: "Good classroom participation and practical skills.",
+    recommendation: "Focus more on written explanations.",
+    status: "Pending",
+  },
+  {
+    subject: "Programming",
+    teacher: "Mr. Johnson",
+    rating: "⭐⭐⭐⭐⭐",
+    comment: "Shows excellent coding skills and creativity.",
+    recommendation: "Start contributing to real-world projects.",
+    status: "Acknowledged",
+  },
+]);
 
   useEffect(() => {
     const fetchGamification = async () => {
@@ -128,8 +402,6 @@ setRecentActivity(mapped);
 
     fetchGamification();
   }, [user]);
-
-  // Attendance stats
   const attendanceStats = useMemo(() => {
     const counts = recentActivity.reduce(
       (acc, curr) => {
@@ -148,18 +420,11 @@ setRecentActivity(mapped);
       }
     );
 
-    const total =
-      counts.present +
-      counts.absent +
-      counts.late;
+    const total = counts.present + counts.absent + counts.late;
 
     const percentage =
       total > 0
-        ? Math.round(
-            ((counts.present + counts.late) /
-              total) *
-              100
-          )
+        ? Math.round(((counts.present + counts.late) / total) * 100)
         : 0;
 
     return {
@@ -169,138 +434,234 @@ setRecentActivity(mapped);
     };
   }, [recentActivity]);
 
-  // Achievement data
   const attendancePerformance = useMemo(() => {
     return {
-      attendancePercentage:
-        attendanceStats?.percentage ?? 0,
-
-      streakDays:
-        gamificationData?.currentStreak ?? 8,
+      attendancePercentage: attendanceStats?.percentage ?? 0,
+      streakDays: gamificationData?.currentStreak ?? 0,
     };
   }, [attendanceStats, gamificationData]);
 
+  const activityParticipationScore = useMemo(() => {
+    return Math.min(100, Math.round((recentActivity.length / 10) * 100));
+  }, [recentActivity.length]);
+
+  const assignmentSubmissionScore = useMemo(() => {
+    return Math.min(
+      100,
+      Math.round(
+        (recentActivity.filter((item) => item?.status === "present").length /
+          8) *
+          100
+      )
+    );
+  }, [recentActivity]);
+
+  const academicPerformanceScore = useMemo(() => {
+    const totalXp = gamificationData?.totalXp ?? 0;
+    return Math.min(100, Math.round((totalXp / 1200) * 100));
+  }, [gamificationData]);
+
+  const engagementMetrics = useMemo(() => {
+    return calculateEngagementScore({
+      attendanceScore: attendanceStats?.percentage ?? 0,
+      activityScore: activityParticipationScore,
+      assignmentScore: assignmentSubmissionScore,
+      academicScore: academicPerformanceScore,
+    });
+  }, [
+    attendanceStats?.percentage,
+    activityParticipationScore,
+    assignmentSubmissionScore,
+    academicPerformanceScore,
+  ]);
+
+  const scheduleState = useMemo(
+    () => getTodaySchedule(scheduleTime, weeklySchedule),
+    [scheduleTime]
+  );
+
+  const todayClasses = scheduleState.classes;
+  const upcomingClass = scheduleState.upcomingClass;
+  const isAttendanceWindow = scheduleState.isAttendanceWindow;
+
+  // ── Effects ────────────────────────────────────────────────────────────
+
+  // Fetch engagement history
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const controller = new AbortController();
+
+    const fetchEngagement = async () => {
+      try {
+        setEngagementError(null);
+        const token = await user.getIdToken();
+        const response = await fetch(
+          `/api/engagement-scores?studentId=${encodeURIComponent(user.uid)}&limit=12`,
+          {
+            signal: controller.signal,
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (!response.ok) {
+          throw new Error(`Unable to load engagement data: ${response.status}`);
+        }
+        const payload = await response.json();
+        setEngagementHistory(payload?.data?.history || []);
+        setEngagementRecord(payload?.data?.latest || null);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setEngagementError(err.message);
+        }
+      }
+    };
+
+    fetchEngagement();
+
+    return () => controller.abort();
+  }, [user?.uid]);
+
+  // Persist engagement metrics
+  useEffect(() => {
+    if (!user?.uid || engagementSaved || !engagementMetrics) return;
+
+    const persistEngagement = async () => {
+      try {
+        const token = await user.getIdToken();
+        await fetch("/api/engagement-scores", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            studentId: user.uid,
+            attendanceScore: engagementMetrics.attendanceScore,
+            activityScore: engagementMetrics.activityScore,
+            assignmentScore: engagementMetrics.assignmentScore,
+            academicScore: engagementMetrics.academicScore,
+          }),
+        });
+        setEngagementSaved(true);
+      } catch {
+        // Do not block dashboard if persistence fails.
+      }
+    };
+
+    persistEngagement();
+  }, [user?.uid, engagementMetrics, engagementSaved]);
+
+  // Dashboard update loop
   useEffect(() => {
     const loadingTimer = setTimeout(() => {
-      setLoading(false);
+      if (isMounted()) setLoading(false);
     }, 1500);
 
-    const updateDashboard = async () => {
-      try {
-        const now = new Date();
+    const updateDashboard = () => {
+      if (!isMounted()) return;
+      const now = new Date();
 
-        setCurrentTime(now);
+      setCurrentTime(now);
 
-        const hour = now.getHours();
-        const minute = now.getMinutes();
-        const day = now.getDay();
-
-        const isWeekday = day >= 1 && day <= 5;
-
-        const isAttendanceTime =
-          hour === 9 && minute <= 10;
-
-        const newIsAttendance =
-          isWeekday && isAttendanceTime;
-
-        setIsAttendanceWindow((prev) =>
-          prev !== newIsAttendance
-            ? newIsAttendance
-            : prev
-        );
-
-        const dayNames = [
-          "Sunday",
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-        ];
-
-        const today = dayNames[day];
-
-        const classes =
-          weeklySchedule[today] || [];
-
-        setTodayClasses(classes);
-
-        const upcoming = classes.find((cls) => {
-          const [startTime] =
-            cls.time.split("-");
-
-          const [classHour, classMinute] =
-            startTime
-              .split(":")
-              .map(Number);
-
-          return (
-            hour < classHour ||
-            (hour === classHour &&
-              minute < classMinute)
-          );
-        });
-
-        setUpcomingClass(upcoming || null);
-
-        setError(null);
-      } catch (err) {
-        setError(
-          "Failed to load dashboard data. Please try again."
-        );
-
-        console.error(
-          "Error updating dashboard:",
-          err
-        );
+      const scheduleTickKey = getScheduleTickKey(now);
+      if (lastScheduleTickRef.current !== scheduleTickKey) {
+        lastScheduleTickRef.current = scheduleTickKey;
+        setScheduleTime(now);
       }
+
+      setError(null);
     };
 
     updateDashboard();
 
-    const timer = setInterval(
-      updateDashboard,
-      1000
-    );
+    const timer = setInterval(updateDashboard, 1000);
 
     return () => {
       clearInterval(timer);
       clearTimeout(loadingTimer);
     };
-  }, []);
+  }, [isMounted]);
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "present":
-        return "text-green-400 bg-green-500/10 border-green-500/30";
+  const handleEvaluateQuiz = (scoreOutOfFive) => {
+    const percentage = (scoreOutOfFive / 5) * 100;
 
-      case "absent":
-        return "text-red-400 bg-red-500/10 border-red-500/30";
+    if (percentage >= 80) {
+      setSkillPath("advanced");
+    } else if (percentage <= 40) {
+      setSkillPath("booster");
+    } else {
+      setSkillPath("standard");
+    }
+    setShowDiagnosticQuiz(false);
+  };
+const generateRoadmap = () => {
+  const ROADMAPS = {
+    "Web Development": {
+      Beginner: ["HTML", "CSS", "JavaScript", "React", "Node.js"],
+    },
+    "Data Science": {
+      Beginner: [
+        "Python",
+        "NumPy",
+        "Pandas",
+        "Data Visualization",
+        "Machine Learning",
+      ],
+    },
+    "Artificial Intelligence": {
+      Beginner: [
+        "Python",
+        "Math Basics",
+        "Machine Learning",
+        "Deep Learning",
+        "LLMs",
+      ],
+    },
+  };
 
-      case "late":
-        return "text-yellow-400 bg-yellow-500/10 border-yellow-500/30";
+  if (!goal) return;
 
-      default:
-        return "text-gray-400 bg-gray-500/10 border-gray-500/30";
+  setRoadmap(ROADMAPS[goal]?.[level] || []);
+};
+
+  const handleExportAttendance = (format) => {
+    if (!recentActivity || recentActivity.length === 0) {
+      toast.error("No attendance records to export.");
+      return;
+    }
+    const exportData = recentActivity.map((record) => ({
+      Date: record.date,
+      Time: record.timestamp
+        ? new Date(record.timestamp).toLocaleTimeString()
+        : "-",
+      Status: record.status.toUpperCase(),
+      Confidence: `${Math.round(record.confidenceScore * 100)}%`,
+    }));
+    const filename = `attendance_${user?.displayName || "student"}_${new Date().toISOString().split("T")[0]}`;
+
+    if (format === "csv") {
+      exportToCSV(exportData, filename);
+      toast.success("Attendance exported to CSV");
+    } else {
+      const columns = [
+        { header: "Date", dataKey: "Date" },
+        { header: "Time", dataKey: "Time" },
+        { header: "Status", dataKey: "Status" },
+        { header: "Confidence", dataKey: "Confidence" },
+      ];
+      exportToPDF(
+        exportData,
+        columns,
+        `Attendance Report: ${user?.displayName || "Student"}`,
+        filename
+      );
+      toast.success("Attendance exported to PDF");
     }
   };
 
-  const getUserInitials = () => {
-    if (!user?.displayName && !user?.email) {
-      return "U";
-    }
-
-    return (
-      user?.displayName
-        ?.split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase() ||
-      user?.email?.[0]?.toUpperCase() ||
-      "U"
-    );
-  };
+  // ── Render ────────────────────────────────────────────────────────────
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -308,182 +669,393 @@ setRecentActivity(mapped);
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black relative overflow-hidden flex items-center justify-center">
-        <div className="relative z-10 text-center text-white px-4">
-          <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-10 h-10 text-red-400" />
-          </div>
-
-          <h2 className="text-2xl font-bold mb-2">
-            Error Loading Dashboard
-          </h2>
-
-          <p className="text-gray-400 mb-6">
-            {error}
-          </p>
-
-          <button
-            onClick={() =>
-              window.location.reload()
-            }
-            className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg"
-          >
-            <RefreshCw className="w-5 h-5 mr-2 inline" />
-            Retry
-          </button>
-        </div>
-      </div>
+      <DashboardError error={error} onRetry={() => window.location.reload()} />
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black relative overflow-hidden">
+    <div
+      className={`min-h-screen bg-background relative overflow-x-hidden ${dashboardContentOffsetClass}`}
+    >
       <Navbar />
 
+      {/* Diagnostic Quiz Section */}
+      {showDiagnosticQuiz ? (
+        <div className="max-w-7xl mx-auto mt-6 px-6 relative z-20">
+          <div className="bg-gradient-to-r from-blue-900/40 via-purple-900/40 to-black border border-blue-500/30 rounded-2xl p-6 text-white backdrop-blur-xl">
+            <div className="flex items-center space-x-2 mb-2">
+              <Sparkles className="w-5 h-5 text-yellow-400 animate-pulse" />
+              <h3 className="text-lg font-bold">Dynamic Module Evaluation</h3>
+            </div>
+            <p className="text-sm text-gray-400 mb-4">
+              Choose an option below to test how the layout alters itself
+              seamlessly depending on student skill level.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleEvaluateQuiz(5)}
+                className="bg-green-500/20 hover:bg-green-500/40 text-green-400 border border-green-500/30 px-4 py-2 rounded-xl text-xs font-semibold transition"
+              >
+                Simulate Advanced Track (Skip Basics)
+              </button>
+              <button
+                onClick={() => handleEvaluateQuiz(2)}
+                className="bg-yellow-500/20 hover:bg-yellow-500/40 text-yellow-400 border border-yellow-500/30 px-4 py-2 rounded-xl text-xs font-semibold transition"
+              >
+                Simulate Booster Track (Add Helpers)
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="max-w-7xl mx-auto mt-6 px-6 relative z-20">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between">
+            <span className="text-sm text-gray-400">
+              Current Adaptive Layout Sequence:
+            </span>
+            <span
+              className={`text-xs px-3 py-1 rounded-full font-bold uppercase ${
+                skillPath === "advanced"
+                  ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                  : skillPath === "booster"
+                    ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                    : "bg-blue-500/20 text-blue-400 border border-white/10"
+              }`}
+            >
+              {skillPath} Sequence Active
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Main Dashboard Header */}
       <div className="relative z-10">
         <div className="max-w-7xl mx-auto pt-20 pb-6 px-6">
-          <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6 shadow-2xl">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  {user?.photoURL ? (
-                    <Image
-                      src={user.photoURL}
-                      alt={`${user?.displayName || user?.email?.split("@")[0] || "Student"} profile photo`}
-                      width={48}
-                      height={48}
-                      className="w-12 h-12 rounded-xl border border-accent/30 object-cover"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent to-blue-500 flex items-center justify-center border border-accent/30">
-                      <span className="text-sm font-bold text-white">
-                        {getUserInitials()}
-                      </span>
-                    </div>
-                  )}
+          <DashboardHeader
+            user={user}
+            currentTime={currentTime}
+            getInitials={getUserInitials}
+          />
+        </div>
+      </div>
+      <div className="mt-6 bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+  <h2 className="text-xl font-bold text-white mb-4">
+    AI Learning Roadmap Generator
+  </h2>
 
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-black" />
-                </div>
+  <div className="flex flex-wrap gap-4 mb-4">
+    <select
+      value={goal}
+      onChange={(e) => setGoal(e.target.value)}
+      className="px-4 py-2 rounded-lg bg-black/40 text-white border border-white/20"
+    >
+      <option value="">Select Goal</option>
+      <option value="Web Development">Web Development</option>
+      <option value="Data Science">Data Science</option>
+      <option value="Artificial Intelligence">Artificial Intelligence</option>
+    </select>
 
-                <div>
-                  <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-white to-accent bg-clip-text text-transparent">
-                    {user?.displayName ||
-                      user?.email?.split("@")[0] ||
-                      "Student"}
-                  </h1>
+    <select
+      value={level}
+      onChange={(e) => setLevel(e.target.value)}
+      className="px-4 py-2 rounded-lg bg-black/40 text-white border border-white/20"
+    >
+      <option value="Beginner">Beginner</option>
+      <option value="Intermediate">Intermediate</option>
+      <option value="Advanced">Advanced</option>
+    </select>
 
-                  <div className="text-sm text-gray-400">
-                    {user?.email || "No email"}
-                  </div>
-                </div>
-              </div>
+    <button
+      onClick={generateRoadmap}
+      className="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white"
+    >
+      Generate Roadmap
+    </button>
+  </div>
 
-              <div className="text-right">
-                <div className="text-xl font-mono text-white">
-                  {currentTime?.toLocaleTimeString(
-                    [],
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }
-                  )}
-                </div>
+  {roadmap.length > 0 && (
+    <div className="space-y-2">
+      {roadmap.map((item, index) => (
+        <div
+          key={index}
+          className="p-3 rounded-lg bg-white/5 border border-white/10 text-white"
+        >
+          Phase {index + 1}: {item}
+        </div>
+      ))}
+    </div>
+  )}
+</div>
 
-                <div className="text-xs text-gray-400">
-                  {currentTime?.toLocaleDateString(
-                    [],
-                    {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    }
-                  )}
-                </div>
-              </div>
+{/* Peer Study Group Finder */}
+<div className="mt-6 bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+  <h2 className="text-xl font-bold text-white mb-4">
+    Student Peer Study Groups
+  </h2>
+
+  <div className="grid md:grid-cols-3 gap-4">
+    {studyGroups.map((group, index) => (
+      <div
+        key={index}
+        className="p-4 rounded-xl bg-white/5 border border-white/10"
+      >
+        <h3 className="font-semibold text-white">
+          {group.name}
+        </h3>
+
+        <p className="text-sm text-gray-400">
+          Subject: {group.subject}
+        </p>
+
+        <p className="text-sm text-gray-400 mb-3">
+          Members: {group.members}
+        </p>
+
+        <button
+          className="px-3 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-sm"
+        >
+          Join Group
+        </button>
+      </div>
+    ))}
+  </div>
+</div>
+
+      {/* Attendance Insights */}
+      <div className="max-w-7xl mx-auto mt-6 px-6">
+        <div className="flex justify-end mb-4">
+          <ExportDropdown onExport={handleExportAttendance} />
+        </div>
+        <AttendanceInsights recentActivity={recentActivity} />
+      </div>
+
+      {/* Classroom Event Calendar */}
+<div className="max-w-7xl mx-auto mt-6 px-6">
+  <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+    <h2 className="text-xl font-bold text-white mb-4">
+      📅 Classroom Event Calendar
+    </h2>
+
+    <div className="space-y-3">
+      {events.map((event, index) => (
+        <div
+          key={index}
+          className="flex justify-between items-center p-4 rounded-xl bg-white/5 border border-white/10"
+        >
+          <div>
+            <h3 className="text-white font-semibold">
+              {event.title}
+            </h3>
+
+            <p className="text-sm text-gray-400">
+              {event.date}
+            </p>
+          </div>
+
+          <span className={`font-semibold ${event.color}`}>
+            {event.type}
+          </span>
+        </div>
+      ))}
+    </div>
+  </div>
+</div>
+
+{/* Student Performance Comparison Dashboard */}
+<div className="max-w-7xl mx-auto mt-6 px-6">
+  <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+
+    <h2 className="text-xl font-bold text-white mb-4">
+      📊 Student Performance Comparison Dashboard
+    </h2>
+
+    <div className="grid md:grid-cols-3 gap-4">
+      {performanceData.map((item, index) => (
+        <div
+          key={index}
+          className="p-4 rounded-xl bg-white/5 border border-white/10"
+        >
+          <h3 className="text-white font-semibold">
+            {item.subject}
+          </h3>
+
+          <p className="text-blue-400 mt-2">
+            Current Score: {item.currentScore}%
+          </p>
+
+          <p className="text-gray-400">
+            Previous Score: {item.previousScore}%
+          </p>
+
+          <p
+            className={`mt-2 font-semibold ${
+              item.currentScore > item.previousScore
+                ? "text-green-400"
+                : "text-red-400"
+            }`}
+          >
+            {item.currentScore > item.previousScore
+              ? "📈 Improving"
+              : "📉 Needs Improvement"}
+          </p>
+        </div>
+      ))}
+    </div>
+
+  </div>
+</div>
+
+{/* Teacher Feedback & Student Review System */}
+<div className="max-w-7xl mx-auto mt-6 px-6">
+  <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+
+    <h2 className="text-xl font-bold text-white mb-4">
+      📝 Teacher Feedback & Reviews
+    </h2>
+
+    <div className="grid md:grid-cols-3 gap-4">
+      {teacherFeedback.map((feedback, index) => (
+        <div
+          key={index}
+          className="p-4 rounded-xl bg-white/5 border border-white/10"
+        >
+          <h3 className="text-white font-semibold">
+            {feedback.subject}
+          </h3>
+
+          <p className="text-blue-400 text-sm">
+            Teacher: {feedback.teacher}
+          </p>
+
+          <p className="mt-2">
+            {feedback.rating}
+          </p>
+
+          <p className="text-gray-300 mt-2">
+            "{feedback.comment}"
+          </p>
+
+          <p className="text-yellow-400 mt-2 text-sm">
+            💡 {feedback.recommendation}
+          </p>
+
+          <button
+            className={`mt-3 px-3 py-2 rounded-lg text-sm font-semibold ${
+              feedback.status === "Acknowledged"
+                ? "bg-green-500/20 text-green-400"
+                : "bg-orange-500/20 text-orange-400"
+            }`}
+          >
+            {feedback.status}
+          </button>
+
+        </div>
+      ))}
+    </div>
+
+  </div>
+</div>
+
+      {/* Smart Attendance Improvement Suggestions */}
+      <div className="max-w-7xl mx-auto mt-6 px-6">
+        <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+          <h2 className="text-xl font-bold text-white mb-4">
+            🤖 Smart Attendance Improvement Suggestions
+          </h2>
+
+          {attendanceStats.percentage < 60 ? (
+            <ul className="space-y-3 text-red-300">
+              <li>⚠️ Your attendance is critically low. Try attending every upcoming class.</li>
+              <li>⏰ Enable daily reminders to avoid missing classes.</li>
+              <li>📅 Create a weekly study and attendance schedule.</li>
+              <li>🎯 Target at least 85% attendance over the next month.</li>
+            </ul>
+          ) : attendanceStats.percentage < 75 ? (
+            <ul className="space-y-3 text-yellow-300">
+              <li>📈 Your attendance can be improved with more consistency.</li>
+              <li>📝 Track your attendance progress every week.</li>
+              <li>⏰ Set alarms before your classes start.</li>
+              <li>🎯 Aim to increase your attendance above 90%.</li>
+            </ul>
+          ) : (
+            <div className="text-green-400">
+              🎉 Excellent work! Your attendance is strong.
+              Keep maintaining your consistency and punctuality.
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Engagement Score Section */}
+      <div className="max-w-7xl mx-auto mt-8 px-6">
+        <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <EngagementScoreCard
+            overallScore={engagementMetrics.overallScore}
+            attendanceScore={engagementMetrics.attendanceScore}
+            activityScore={engagementMetrics.activityScore}
+            assignmentScore={engagementMetrics.assignmentScore}
+            academicScore={engagementMetrics.academicScore}
+          />
+          <div className="space-y-6">
+            <EngagementTrendChart history={engagementHistory} />
+            <EngagementBreakdown
+              breakdown={[
+                { label: "Attendance", value: engagementMetrics.attendanceScore },
+                {
+                  label: "Activity Participation",
+                  value: engagementMetrics.activityScore,
+                },
+                {
+                  label: "Assignment Submissions",
+                  value: engagementMetrics.assignmentScore,
+                },
+                {
+                  label: "Academic Performance",
+                  value: engagementMetrics.academicScore,
+                },
+              ]}
+            />
           </div>
         </div>
       </div>
 
-      {/* Attendance Heatmap */}
-      <div className="relative z-10 mt-8">
-        <div className="max-w-7xl mx-auto px-6">
-          <AttendanceHeatmap />
+      {/* Digital Certificates & Achievements */}
+      <div className="max-w-7xl mx-auto mt-8 px-6">
+        <StudentAchievementsPanel />
+      </div>
+
+      {/* Adaptive Content Sections */}
+      {skillPath === "advanced" && (
+        <div className="max-w-7xl mx-auto mt-6 px-6">
+          <div className="p-5 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+            <h4 className="text-purple-400 font-bold text-sm mb-1">
+              🚀 Fast-Track Projects Unlocked
+            </h4>
+            <p className="text-xs text-gray-400">
+              The layout has automatically removed foundational reading
+              sequences. Enjoy your high-level coding challenges!
+            </p>
+          </div>
         </div>
-      </div>
+      )}
+
+      {skillPath === "booster" && (
+        <div className="max-w-7xl mx-auto mt-6 px-6">
+          <div className="p-5 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+            <h4 className="text-yellow-400 font-bold text-sm mb-1">
+              💡 Supplemental Booster Modules Active
+            </h4>
+            <p className="text-xs text-gray-400">
+              We have populated extra summary workflows and alternative video
+              references to assist you with core terms.
+            </p>
+          </div>
+        </div>
+      )}
+      
+      <QuickNotes />
     </div>
   );
 };
-
-const StatCard = ({
-  color,
-  label,
-  value,
-}) => {
-  const styles = {
-    green:
-      "from-green-500/20 to-green-600/20 border-green-500/30 text-green-400",
-
-    red:
-      "from-red-500/20 to-red-600/20 border-red-500/30 text-red-400",
-
-    yellow:
-      "from-yellow-500/20 to-yellow-600/20 border-yellow-500/30 text-yellow-400",
-
-    blue:
-      "from-blue-500/20 to-blue-600/20 border-blue-500/30 text-blue-400",
-  };
-
-  return (
-    <div
-      className={`bg-gradient-to-r ${styles[color]} border rounded-xl p-4`}
-    >
-      <div className="text-sm">{label}</div>
-
-      <div className="text-xl font-bold">
-        {value}
-      </div>
-    </div>
-  );
-};
-
-const QuickStat = ({
-  icon,
-  label,
-  value,
-}) => (
-  <div className="flex items-center justify-between">
-    <div className="flex items-center space-x-2">
-      {icon}
-
-      <span className="text-gray-300 text-sm">
-        {label}
-      </span>
-    </div>
-
-    <span className="text-white font-semibold">
-      {value}
-    </span>
-  </div>
-);
-
-const SecurityItem = ({
-  label,
-  status,
-}) => (
-  <div className="flex items-center justify-between">
-    <div className="flex items-center space-x-2">
-      <CheckCircle className="w-4 h-4 text-green-400" />
-
-      <span className="text-gray-300 text-sm">
-        {label}
-      </span>
-    </div>
-
-    <span className="text-green-400 text-sm">
-      {status}
-    </span>
-  </div>
-);
 
 export default StudentDashboard;
