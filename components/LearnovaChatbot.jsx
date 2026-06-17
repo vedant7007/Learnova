@@ -675,10 +675,13 @@ export default function LearnovaChatbot() {
 
     const container = messagesContainerRef.current;
     if (container) {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: "smooth",
-      });
+      const scrollTimeout = setTimeout(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 50);
+      return () => clearTimeout(scrollTimeout);
     }
   }, [messages, isOpen, isMinimized, isLoading]);
 
