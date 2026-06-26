@@ -60,15 +60,20 @@ export const POST = withErrorHandler(
         token
       );
 
-    emitWebhookEvent("attendance.recorded", {
-      studentId: userId,
-      studentName,
-      email,
-      confidence: normalizedConfidence,
-      date: normalizedDate,
-      recordedBy: token.uid,
-    });
+      const alreadyRecorded = Boolean(sagaResult.context?._alreadyRecorded);
 
-    return jsonSuccess({ alreadyRecorded: false }, 201);
-  })
+      if (sagaResult.success && !alreadyRecorded) {
+        emitWebhookEvent("attendance.recorded", {
+          studentId: userId,
+          studentName,
+          email,
+          confidence: normalizedConfidence,
+          date: normalizedDate,
+          recordedBy: token.uid,
+        });
+      }
+
+      return jsonSuccess({ alreadyRecorded }, alreadyRecorded ? 200 : 201);
+    }
+  )
 );
