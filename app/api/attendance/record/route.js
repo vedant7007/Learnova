@@ -54,7 +54,7 @@ export const POST = withErrorHandler(
           userId,
           studentName,
           email,
-          confidenceScore: normalizedConfidence,
+          normalizedConfidenceScore: normalizedConfidence,
           normalizedDate,
         },
         token
