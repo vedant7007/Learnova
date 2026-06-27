@@ -79,6 +79,7 @@ export default function FaceRecognizer({ authUser }) {
     return stopAllMedia;
   }, [stopAllMedia]);
 
+
   const MODEL_URL = "/models";
   const labels = fetchedLabels;
 
@@ -914,4 +915,5 @@ export default function FaceRecognizer({ authUser }) {
       </div>
     );
   };
+}
 }
