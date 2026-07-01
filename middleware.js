@@ -47,6 +47,49 @@ function isAuthRoute(pathname) {
 //   2. Falls back to the rightmost IP in x-forwarded-for (last proxy hop)
 //   3. Rejects private/loopback/reserved IPs to prevent spoofing
 
+function expandIpv6(ip) {
+  const normalized = ip.toLowerCase();
+  let parts;
+  const doubleColon = normalized.indexOf('::');
+  if (doubleColon !== -1) {
+    const left = doubleColon === 0 ? [] : normalized.substring(0, doubleColon).split(':');
+    const right = doubleColon === normalized.length - 2 ? [] : normalized.substring(doubleColon + 2).split(':');
+    const missing = 8 - left.length - right.length;
+    parts = [...left, ...Array(missing).fill('0'), ...right];
+  } else {
+    parts = normalized.split(':');
+  }
+  return parts.map(p => p.padStart(4, '0'));
+}
+
+function isValidPublicIpv6(ip) {
+  if (ip === '::1') return false;
+  if (ip === '::') return false;
+
+  const parts = expandIpv6(ip);
+
+  // IPv4-mapped IPv6 (::ffff:x.x.x.x) — validate as IPv4
+  if (/^0000:0000:0000:0000:0000:ffff/i.test(parts.slice(0, 6).join(':'))) {
+    const v4 = `${parseInt(parts[6].substring(0, 2), 16)}.${parseInt(parts[6].substring(2, 4), 16)}.${parseInt(parts[7].substring(0, 2), 16)}.${parseInt(parts[7].substring(2, 4), 16)}`;
+    return isValidPublicIp(v4);
+  }
+
+  const first = parseInt(parts[0], 16);
+
+  // fc00::/7 — unique-local (private)
+  if ((first & 0xfe00) === 0xfc00) return false;
+  // fe80::/10 — link-local
+  if ((first & 0xffc0) === 0xfe80) return false;
+  // ff00::/8 — multicast
+  if (first >= 0xff00) return false;
+  // 2001:db8::/32 — documentation
+  if (first === 0x2001 && parseInt(parts[1], 16) === 0x0db8) return false;
+  // 2001:2::/48 — benchmark testing
+  if (first === 0x2001 && parseInt(parts[1], 16) === 0x0002) return false;
+
+  return true;
+}
+
 function isValidPublicIp(ip) {
   if (!ip) return false;
   const ipv4Match = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
@@ -66,8 +109,7 @@ function isValidPublicIp(ip) {
     if (a >= 224) return false;
     return true;
   }
-  if (ip === '::1') return false;
-  if (ip.includes(':')) return false;
+  if (ip.includes(':')) return isValidPublicIpv6(ip);
   return false;
 }
 
