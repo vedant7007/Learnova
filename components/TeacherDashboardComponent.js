@@ -91,6 +91,7 @@ import {
 
 import AttendanceRiskDashboard from "@/components/dashboard/AttendanceRiskDashboard";
 import ClassroomMoodWidget from "@/components/dashboard/ClassroomMoodWidget";
+import DraggableDashboardLayout from "@/components/dashboard/DraggableDashboardLayout";
 import { AttendancePasscodeModal } from "./dashboard/AttendancePasscodeModal";
 import LiveAttendanceView from "@/components/LiveAttendanceView";
 import { ExceptionRequestsList } from "./dashboard/ExceptionRequestsList";
@@ -791,276 +792,317 @@ const TeacherDashboard = () => {
   if (loading) {
     return <DashboardSkeleton />;
   }
-  const renderDashboard = () => (
-    <div className="space-y-8">
-      {/* Passcode Generation Section */}
-      {attendanceWindow && (
-        <div className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur-xl rounded-2xl border border-white/20 p-6 shadow-2xl">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
-                <Key className="w-6 h-6 text-foreground dark:text-white" />
+  const renderDashboard = () => {
+    const defaultDashboardLayout = [
+      { i: "overview", x: 0, y: 0, w: 8, h: 9 },
+      { i: "live", x: 0, y: 9, w: 8, h: 6 },
+      { i: "exceptions", x: 0, y: 15, w: 8, h: 8 },
+      { i: "schedule", x: 8, y: 0, w: 4, h: 8 },
+      { i: "actions", x: 8, y: 8, w: 4, h: 6 },
+      { i: "security", x: 8, y: 14, w: 4, h: 6 },
+    ];
+
+    return (
+      <div className="space-y-8">
+        {/* Passcode Generation Section */}
+        {attendanceWindow && (
+          <div className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur-xl rounded-2xl border border-white/20 p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
+                  <Key className="w-6 h-6 text-foreground dark:text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-foreground dark:text-white">
+                    Attendance Window Active
+                  </h3>
+                  <p className="text-muted-foreground dark:text-gray-300">
+                    Generate passcode to unlock student attendance
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-foreground dark:text-white">
-                  Attendance Window Active
-                </h3>
-                <p className="text-muted-foreground dark:text-gray-300">
-                  Generate passcode to unlock student attendance
-                </p>
-              </div>
+              {passcodeExpiresAt && (
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground dark:text-gray-400">
+                    Expires at
+                  </div>
+                  <div className="text-foreground dark:text-white font-semibold">
+                    {new Date(passcodeExpiresAt).toLocaleTimeString()}
+                  </div>
+                </div>
+              )}
             </div>
-            {passcodeExpiresAt && (
-              <div className="text-right">
-                <div className="text-sm text-muted-foreground dark:text-gray-400">
-                  Expires at
+
+            {!passcodeGenerated ? (
+              <button
+                onClick={generatePasscode}
+                disabled={passcodeLoading}
+                className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-foreground dark:text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              >
+                <span className="flex items-center justify-center space-x-2">
+                  {passcodeLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Zap className="w-5 h-5" />
+                  )}
+                  <span>
+                    {passcodeLoading
+                      ? "Generating..."
+                      : "Generate Attendance Passcode"}
+                  </span>
+                  {!passcodeLoading && <Sparkles className="w-5 h-5" />}
+                </span>
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="bg-card/40 dark:bg-card/40 dark:bg-black/40 rounded-xl p-4 border border-border dark:border-white/10">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm text-muted-foreground dark:text-gray-400 mb-1">
+                        Active Passcode
+                      </div>
+                      <div className="text-2xl font-mono text-foreground dark:text-white font-bold tracking-wider">
+                        {currentPasscode}
+                      </div>
+                      {passcodeExpiresAt && (
+                        <div className="text-xs text-muted-foreground dark:text-gray-400 mt-1">
+                          Expires:{" "}
+                          {new Date(passcodeExpiresAt).toLocaleTimeString()}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={copyPasscode}
+                      aria-label="Copy passcode"
+                      className="bg-white/10 hover:bg-white/20 border border-white/20 text-foreground dark:text-white p-3 rounded-lg transition-colors"
+                    >
+                      {copied ? (
+                        <Check className="w-5 h-5 text-green-400" />
+                      ) : (
+                        <Copy className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <div className="text-foreground dark:text-white font-semibold">
-                  {new Date(passcodeExpiresAt).toLocaleTimeString()}
-                </div>
+                <button
+                  onClick={closeAttendanceWindow}
+                  disabled={passcodeLoading}
+                  className="w-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 font-semibold py-2 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                >
+                  {passcodeLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <XCircle className="w-4 h-4" />
+                  )}
+                  <span>
+                    {passcodeLoading ? "Closing..." : "Close Attendance Window"}
+                  </span>
+                </button>
               </div>
             )}
           </div>
+        )}
 
-          {!passcodeGenerated ? (
-            <button
-              onClick={generatePasscode}
-              disabled={passcodeLoading}
-              className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-foreground dark:text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-            >
-              <span className="flex items-center justify-center space-x-2">
-                {passcodeLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Zap className="w-5 h-5" />
-                )}
-                <span>
-                  {passcodeLoading
-                    ? "Generating..."
-                    : "Generate Attendance Passcode"}
-                </span>
-                {!passcodeLoading && <Sparkles className="w-5 h-5" />}
-              </span>
-            </button>
-          ) : (
-            <div className="space-y-3">
-              <div className="bg-card/40 dark:bg-card/40 dark:bg-black/40 rounded-xl p-4 border border-border dark:border-white/10">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm text-muted-foreground dark:text-gray-400 mb-1">
-                      Active Passcode
-                    </div>
-                    <div className="text-2xl font-mono text-foreground dark:text-white font-bold tracking-wider">
-                      {currentPasscode}
-                    </div>
-                    {passcodeExpiresAt && (
-                      <div className="text-xs text-muted-foreground dark:text-gray-400 mt-1">
-                        Expires:{" "}
-                        {new Date(passcodeExpiresAt).toLocaleTimeString()}
-                      </div>
-                    )}
+        <div className="pt-2 pb-8 px-2 md:px-6">
+          <DraggableDashboardLayout
+            defaultLayout={defaultDashboardLayout}
+            layoutKey="teacher_main"
+          >
+            {/* Attendance Overview */}
+            <div key="overview" className="h-full">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-foreground dark:text-white">
+                  Today's Attendance Overview
+                </h2>
+                <button
+                  aria-label="Refresh attendance"
+                  className="text-accent hover:text-accent/80 transition-colors"
+                >
+                  <RefreshCw className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl p-4 border border-blue-500/30">
+                  <div className="text-2xl font-bold text-blue-400">
+                    {attendanceStats.totalStudents}
                   </div>
-                  <button
-                    onClick={copyPasscode}
-                    aria-label="Copy passcode"
-                    className="bg-white/10 hover:bg-white/20 border border-white/20 text-foreground dark:text-white p-3 rounded-lg transition-colors"
-                  >
-                    {copied ? (
-                      <Check className="w-5 h-5 text-green-400" />
-                    ) : (
-                      <Copy className="w-5 h-5" />
-                    )}
-                  </button>
+                  <div className="text-blue-300 text-sm">Total Students</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 rounded-xl p-4 border border-green-500/30">
+                  <div className="text-2xl font-bold text-green-400">
+                    {attendanceStats.presentToday}
+                  </div>
+                  <div className="text-green-300 text-sm">Present</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-red-500/20 to-red-600/20 rounded-xl p-4 border border-red-500/30">
+                  <div className="text-2xl font-bold text-red-400">
+                    {attendanceStats.absentToday}
+                  </div>
+                  <div className="text-red-300 text-sm">Absent</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 rounded-xl p-4 border border-yellow-500/30">
+                  <div className="text-2xl font-bold text-yellow-400">
+                    {attendanceStats.lateToday}
+                  </div>
+                  <div className="text-yellow-300 text-sm">Late</div>
                 </div>
               </div>
-              <button
-                onClick={closeAttendanceWindow}
-                disabled={passcodeLoading}
-                className="w-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 font-semibold py-2 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-              >
-                {passcodeLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <XCircle className="w-4 h-4" />
-                )}
-                <span>
-                  {passcodeLoading ? "Closing..." : "Close Attendance Window"}
-                </span>
-              </button>
+
+              {/* Current Class Attendance */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-foreground dark:text-white">
+                  Current Class Attendance
+                </h3>
+                <div className="space-y-2">
+                  {studentAttendanceData.map((student) => (
+                    <div
+                      key={student.id}
+                      className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4 border border-gray-700/50"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            student.status === "present"
+                              ? "bg-green-400"
+                              : student.status === "absent"
+                                ? "bg-red-400"
+                                : "bg-yellow-400"
+                          }`}
+                        />
+                        <div>
+                          <div className="text-foreground dark:text-white font-medium">
+                            {student.name}
+                          </div>
+                          <div className="text-muted-foreground dark:text-gray-400 text-sm">
+                            {student.rollNo}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div
+                          className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                            student.status
+                          )}`}
+                        >
+                          {student.status.toUpperCase()}
+                        </div>
+                        <div className="text-muted-foreground dark:text-gray-400 text-sm mt-1">
+                          {student.status !== "absent" && (
+                            <span>
+                              {student.time} ({student.confidence}%)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          )}
-        </div>
-      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-8">
-          {/* Attendance Overview */}
-          <div className="bg-card/40 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-border dark:border-white/10 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-foreground dark:text-white">
-                Today's Attendance Overview
-              </h2>
-              <button
-                aria-label="Refresh attendance"
-                className="text-accent hover:text-accent/80 transition-colors"
-              >
-                <RefreshCw className="w-5 h-5" />
-              </button>
+            {/* Live Check-Ins */}
+            <div key="live" className="h-full">
+              <LiveAttendanceView title="Live Check-Ins" className="h-full" />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl p-4 border border-blue-500/30">
-                <div className="text-2xl font-bold text-blue-400">
-                  {attendanceStats.totalStudents}
-                </div>
-                <div className="text-blue-300 text-sm">Total Students</div>
-              </div>
-
-              <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 rounded-xl p-4 border border-green-500/30">
-                <div className="text-2xl font-bold text-green-400">
-                  {attendanceStats.presentToday}
-                </div>
-                <div className="text-green-300 text-sm">Present</div>
-              </div>
-
-              <div className="bg-gradient-to-br from-red-500/20 to-red-600/20 rounded-xl p-4 border border-red-500/30">
-                <div className="text-2xl font-bold text-red-400">
-                  {attendanceStats.absentToday}
-                </div>
-                <div className="text-red-300 text-sm">Absent</div>
-              </div>
-
-              <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 rounded-xl p-4 border border-yellow-500/30">
-                <div className="text-2xl font-bold text-yellow-400">
-                  {attendanceStats.lateToday}
-                </div>
-                <div className="text-yellow-300 text-sm">Late</div>
-              </div>
+            {/* Exception Requests */}
+            <div key="exceptions" className="h-full">
+              <ExceptionRequestsList
+                exceptionRequests={exceptionRequests}
+                isLoadingRequests={isLoadingRequests}
+                requestsError={requestsError}
+                fetchAllRequests={fetchAllRequests}
+                showAllRequestsModal={showAllRequestsModal}
+                setShowAllRequestsModal={setShowAllRequestsModal}
+                allRequests={allRequests}
+                handleExceptionRequest={handleExceptionRequest}
+              />
             </div>
 
-            {/* Current Class Attendance */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-foreground dark:text-white">
-                Current Class Attendance
-              </h3>
-              <div className="space-y-2">
-                {studentAttendanceData.map((student) => (
-                  <div
-                    key={student.id}
-                    className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4 border border-gray-700/50"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div
-                        className={`w-3 h-3 rounded-full ${
-                          student.status === "present"
-                            ? "bg-green-400"
-                            : student.status === "absent"
-                              ? "bg-red-400"
-                              : "bg-yellow-400"
-                        }`}
-                      />
-                      <div>
+            {/* Today's Schedule */}
+            <div key="schedule" className="h-full">
+              <div className="flex items-center space-x-2 mb-6">
+                <Calendar className="w-6 h-6 text-accent" />
+                <h2 className="text-xl font-bold text-foreground dark:text-white">
+                  Today's Classes
+                </h2>
+              </div>
+
+              {todayClasses.length > 0 ? (
+                <div className="space-y-3">
+                  {todayClasses.map((cls, index) => (
+                    <div
+                      key={index}
+                      className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50"
+                    >
+                      <div className="flex items-center justify-between mb-2">
                         <div className="text-foreground dark:text-white font-medium">
-                          {student.name}
+                          {cls.subject}
                         </div>
-                        <div className="text-muted-foreground dark:text-gray-400 text-sm">
-                          {student.rollNo}
+                        <div className="text-sm text-muted-foreground dark:text-gray-400">
+                          {cls.time}
                         </div>
                       </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div
-                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                          student.status
-                        )}`}
-                      >
-                        {student.status.toUpperCase()}
+                      <div className="text-sm text-muted-foreground dark:text-gray-400 mb-2">
+                        {cls.semester} - Section {cls.section}
                       </div>
-                      <div className="text-muted-foreground dark:text-gray-400 text-sm mt-1">
-                        {student.status !== "absent" && (
-                          <span>
-                            {student.time} ({student.confidence}%)
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-1">
+                          <MapPin className="w-3 h-3 text-accent" />
+                          <span className="text-xs text-accent">
+                            {cls.room}
                           </span>
-                        )}
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Users className="w-3 h-3 text-blue-400" />
+                          <span className="text-xs text-blue-400">
+                            {cls.students}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Calendar className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                  <p className="text-muted-foreground dark:text-gray-400">
+                    No classes scheduled for today
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
 
-          {/* Live Check-Ins */}
-          <LiveAttendanceView title="Live Check-Ins" />
-        </div>
-        <div className="space-y-8">
-          {/* Exception Requests */}
-          <ExceptionRequestsList
-            exceptionRequests={exceptionRequests}
-            isLoadingRequests={isLoadingRequests}
-            requestsError={requestsError}
-            fetchAllRequests={fetchAllRequests}
-            showAllRequestsModal={showAllRequestsModal}
-            setShowAllRequestsModal={setShowAllRequestsModal}
-            allRequests={allRequests}
-            handleExceptionRequest={handleExceptionRequest}
-          />
-        </div>
-        {/* Sidebar */}
-        <div className="space-y-8">
-          {/* Today's Schedule */}
-          <div className="bg-card/40 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-border dark:border-white/10 p-6">
-            <div className="flex items-center space-x-2 mb-6">
-              <Calendar className="w-6 h-6 text-accent" />
-              <h2 className="text-xl font-bold text-foreground dark:text-white">
-                Today's Classes
+            {/* Quick Actions */}
+            <div key="actions" className="h-full">
+              <h2 className="text-xl font-bold text-foreground dark:text-white mb-6">
+                Quick Actions
               </h2>
-            </div>
 
-            {todayClasses.length > 0 ? (
               <div className="space-y-3">
-                {todayClasses.map((cls, index) => (
-                  <div
-                    key={index}
-                    className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-foreground dark:text-white font-medium">
-                        {cls.subject}
+                <ExportDropdown
+                  onExport={handleAttendanceExport}
+                  isExporting={isExporting}
+                  label="Export Reports"
+                  className="w-full bg-gradient-to-r from-purple-600/20 to-blue-600/20 hover:from-purple-600/30 hover:to-blue-600/30 border border-purple-500/30 text-foreground dark:text-white p-3 rounded-xl transition-colors text-left flex justify-start items-center"
+                >
+                  <div className="flex items-center space-x-3 text-left">
+                    <Download className="w-5 h-5 text-purple-400" />
+                    <div>
+                      <div className="font-medium text-foreground dark:text-white">
+                        Export Reports
                       </div>
                       <div className="text-sm text-muted-foreground dark:text-gray-400">
-                        {cls.time}
-                      </div>
-                    </div>
-                    <div className="text-sm text-muted-foreground dark:text-gray-400 mb-2">
-                      {cls.semester} - Section {cls.section}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-1">
-                        <MapPin className="w-3 h-3 text-accent" />
-                        <span className="text-xs text-accent">{cls.room}</span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <Users className="w-3 h-3 text-blue-400" />
-                        <span className="text-xs text-blue-400">
-                          {cls.students}
-                        </span>
+                        CSV / PDF formats
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <Calendar className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                <p className="text-muted-foreground dark:text-gray-400">
-                  No classes scheduled for today
-                </p>
-              </div>
-            )}
-          </div>
+                </ExportDropdown>
 
           {/* Quick Actions */}
           <div className="bg-card/40 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-border dark:border-white/10 p-6">
@@ -1100,8 +1142,7 @@ const TeacherDashboard = () => {
                       Weekly timetable
                     </div>
                   </div>
-                </div>
-              </button>
+                </button>
 
               <button
                 className="w-full bg-gradient-to-r from-orange-600/20 to-red-600/20 hover:from-orange-600/30 hover:to-red-600/30 border border-orange-500/30 text-foreground dark:text-white p-3 rounded-xl transition-colors text-left"
@@ -1115,8 +1156,9 @@ const TeacherDashboard = () => {
                       To students/parents
                     </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              </div>
+            </div>
 
               <button
                 onClick={() => setShowAbsentSummaryModal(true)}
@@ -1131,8 +1173,8 @@ const TeacherDashboard = () => {
                       Send notes to absent students
                     </div>
                   </div>
+                  <span className="text-green-400 text-sm">Active</span>
                 </div>
-              </button>
 
               <button
                 onClick={() => handleExport("csv")}
@@ -1147,75 +1189,44 @@ const TeacherDashboard = () => {
                       CSV format (Instant Download)
                     </div>
                   </div>
+                  <span className="text-green-400 text-sm">Active</span>
                 </div>
-              </button>
-            </div>
-          </div>
 
-          {/* Security Status */}
-          <div className="bg-card/40 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-border dark:border-white/10 p-6">
-            <div className="flex items-center space-x-2 mb-6">
-              <Shield className="w-6 h-6 text-green-400" />
-              <h2 className="text-xl font-bold text-foreground dark:text-white">
-                System Status
-              </h2>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-400" />
-                  <span className="text-muted-foreground dark:text-gray-300 text-sm">
-                    Face Recognition
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle className="w-4 h-4 text-green-400" />
+                    <span className="text-muted-foreground dark:text-gray-300 text-sm">
+                      Time Window
+                    </span>
+                  </div>
+                  <span className="text-green-400 text-sm">Configured</span>
                 </div>
-                <span className="text-green-400 text-sm">Active</span>
-              </div>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-400" />
-                  <span className="text-muted-foreground dark:text-gray-300 text-sm">
-                    GPS Geofencing
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Activity className="w-4 h-4 text-blue-400" />
+                    <span className="text-muted-foreground dark:text-gray-300 text-sm">
+                      Live Monitoring
+                    </span>
+                  </div>
+                  <span className="text-blue-400 text-sm">Running</span>
+                  <span className="text-blue-400 text-sm">Running</span>
                 </div>
-                <span className="text-green-400 text-sm">Active</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-400" />
-                  <span className="text-muted-foreground dark:text-gray-300 text-sm">
-                    Time Window
-                  </span>
-                </div>
-                <span className="text-green-400 text-sm">Configured</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Activity className="w-4 h-4 text-blue-400" />
-                  <span className="text-muted-foreground dark:text-gray-300 text-sm">
-                    Live Monitoring
-                  </span>
-                </div>
-                <span className="text-blue-400 text-sm">Running</span>
               </div>
             </div>
-          </div>
+          </DraggableDashboardLayout>
         </div>
-      </div>
 
-      {/* Passcode Modal */}
-      <AttendancePasscodeModal
-        showPasscodeModal={showPasscodeModal}
-        setShowPasscodeModal={setShowPasscodeModal}
-        currentPasscode={currentPasscode}
-        copyPasscode={copyPasscode}
-        copied={copied}
-      />
-    </div>
-  );
+        <AttendancePasscodeModal
+          showPasscodeModal={showPasscodeModal}
+          setShowPasscodeModal={setShowPasscodeModal}
+          currentPasscode={currentPasscode}
+          copyPasscode={copyPasscode}
+          copied={copied}
+        />
+      </div>
+    );
+  };
 
   const renderAnalytics = () => (
     <div className="space-y-8">
