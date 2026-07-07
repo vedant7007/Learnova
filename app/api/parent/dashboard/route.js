@@ -48,7 +48,11 @@ export const GET = withErrorHandler(async (request) => {
       const noticesQuery = await db
         .collection("notices")
         .where("instituteId", "==", instituteId)
-        .where("targetAudience", "array-contains-any", ["student", "parent"])
+        .where("targetAudience", "array-contains-any", [
+          "student",
+          "parent",
+          "all",
+        ])
         .orderBy("createdAt", "desc")
         .limit(3)
         .get();
