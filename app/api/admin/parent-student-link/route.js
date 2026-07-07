@@ -118,7 +118,8 @@ export const POST = withErrorHandler(async (request) => {
     return jsonError(`Parent with email "${parentEmail}" not found`, 404);
   }
 
-  const parentProfile = parentQuery.docs[0].data();
+  const parentDoc = parentQuery.docs[0];
+  const parentProfile = parentDoc.data();
   if (parentProfile.role !== "parent") {
     return jsonError(
       `User "${parentEmail}" is registered as "${parentProfile.role}", not "parent"`,
@@ -137,7 +138,8 @@ export const POST = withErrorHandler(async (request) => {
     return jsonError(`Student with email "${studentEmail}" not found`, 404);
   }
 
-  const studentProfile = studentQuery.docs[0].data();
+  const studentDoc = studentQuery.docs[0];
+  const studentProfile = studentDoc.data();
   if (studentProfile.role !== "student") {
     return jsonError(
       `User "${studentEmail}" is registered as "${studentProfile.role}", not "student"`,
@@ -156,8 +158,14 @@ export const POST = withErrorHandler(async (request) => {
     );
   }
 
-  const parentId = parentProfile.uid;
-  const studentId = studentProfile.uid;
+  const parentId = parentDoc.id;
+  const studentId = studentDoc.id;
+  if (!parentId || !studentId) {
+    return jsonError(
+      "Could not resolve parent or student user id from Firestore document",
+      400
+    );
+  }
   const linkId = `${parentId}_${studentId}`;
 
   // Check if link already exists
